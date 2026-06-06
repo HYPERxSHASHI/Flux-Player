@@ -27,13 +27,11 @@ body {
   justify-content: center;
   align-items: center;
   user-select: none;
-  -webkit-user-select: none;
 }
 
 input,
 select {
   user-select: auto;
-  -webkit-user-select: auto;
 }
 
 .app {
@@ -200,11 +198,6 @@ select {
   border-color: var(--accent-color);
 }
 
-.search-bar::placeholder {
-  color: var(--text-secondary);
-  opacity: 0.7;
-}
-
 .song-list {
   display: flex;
   flex-direction: column;
@@ -219,7 +212,7 @@ select {
   padding: 12px;
   border-radius: 20px;
   cursor: pointer;
-  transition: 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: 0.3s;
   position: relative;
   overflow: hidden;
 }
@@ -227,10 +220,6 @@ select {
 .song-item:hover {
   transform: translateY(-3px);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-}
-
-.song-item:active {
-  transform: scale(0.98);
 }
 
 .song-cover-small {
@@ -255,7 +244,6 @@ select {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text-primary);
 }
 
 .song-artist {
@@ -281,21 +269,95 @@ select {
   justify-content: center;
   align-items: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  transition: 0.2s;
-  pointer-events: none;
   opacity: 0;
   transform: scale(0.8);
-}
-
-.list-play-btn .material-symbols-rounded {
-  font-size: 24px;
-  font-weight: bold;
-  margin-left: 2px;
+  transition: 0.2s;
 }
 
 .song-item:hover .list-play-btn {
   opacity: 1;
   transform: scale(1);
+}
+
+/* NEW CSS VISUALIZER */
+.css-visualizer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 35%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.5s;
+  pointer-events: none;
+}
+
+.css-visualizer.active {
+  opacity: 0.4;
+}
+
+.viz-bar {
+  width: 8px;
+  background: var(--accent-color);
+  border-radius: 4px 4px 0 0;
+  animation: eq 0.8s ease-in-out infinite alternate;
+  transform-origin: bottom;
+}
+
+.viz-bar:nth-child(1) {
+  height: 30%;
+  animation-delay: 0.1s;
+  animation-duration: 0.7s;
+}
+
+.viz-bar:nth-child(2) {
+  height: 60%;
+  animation-delay: 0.3s;
+  animation-duration: 0.9s;
+}
+
+.viz-bar:nth-child(3) {
+  height: 100%;
+  animation-delay: 0.0s;
+  animation-duration: 1.1s;
+}
+
+.viz-bar:nth-child(4) {
+  height: 40%;
+  animation-delay: 0.2s;
+  animation-duration: 0.8s;
+}
+
+.viz-bar:nth-child(5) {
+  height: 75%;
+  animation-delay: 0.4s;
+  animation-duration: 1.0s;
+}
+
+.viz-bar:nth-child(6) {
+  height: 50%;
+  animation-delay: 0.1s;
+  animation-duration: 0.9s;
+}
+
+.viz-bar:nth-child(7) {
+  height: 85%;
+  animation-delay: 0.3s;
+  animation-duration: 1.2s;
+}
+
+@keyframes eq {
+  0% {
+    transform: scaleY(0.1);
+  }
+
+  100% {
+    transform: scaleY(1);
+  }
 }
 
 .av-toggle-container {
@@ -355,22 +417,6 @@ select {
   z-index: 2;
 }
 
-#video-player-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: #000;
-  z-index: 15;
-}
-
-#native-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
 .lyrics-overlay {
   position: absolute;
   top: 0;
@@ -390,13 +436,6 @@ select {
   display: none;
 }
 
-.lyrics-title {
-  font-size: 18px;
-  font-weight: 800;
-  margin-bottom: 20px;
-  color: var(--text-primary);
-}
-
 .lyrics-text {
   font-size: 16px;
   font-weight: 600;
@@ -405,17 +444,6 @@ select {
   text-align: center;
   width: 100%;
   padding-bottom: 30px;
-}
-
-#visualizerCanvas {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 40%;
-  z-index: 5;
-  opacity: 0.85;
-  pointer-events: none;
 }
 
 .track-info {
@@ -443,7 +471,6 @@ select {
   text-overflow: ellipsis;
 }
 
-/* RE-ENGINEERED CLEAN STRAIGHT PROGRESS BAR */
 .progress-area {
   margin-bottom: 36px;
 }
@@ -504,7 +531,6 @@ select {
   margin-top: 10px;
 }
 
-/* Controls */
 .controls-main {
   display: flex;
   justify-content: center;
@@ -556,7 +582,42 @@ select {
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
 }
 
-/* Bottom Nav */
+/* NEW INSTAGRAM-STYLE VOLUME SLIDER */
+.volume-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.volume-slider-container {
+  position: absolute;
+  bottom: 140%;
+  width: 40px;
+  height: 130px;
+  border-radius: 20px;
+  padding: 16px 0;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+
+.volume-wrapper:hover .volume-slider-container {
+  display: flex;
+  animation: slideUpFade 0.2s ease;
+}
+
+.volume-slider {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  appearance: slider-vertical;
+  height: 100%;
+  width: 6px;
+  accent-color: var(--accent-color);
+  cursor: pointer;
+}
+
 .bottom-nav {
   position: absolute;
   bottom: 0;
@@ -640,9 +701,9 @@ select {
 }
 
 .load-music-btn {
-  background: var(--surface-color);
-  border: var(--glass-border);
-  color: var(--text-primary);
+  background: var(--accent-color);
+  color: #ffffff;
+  border: none;
   padding: 16px 24px;
   border-radius: 24px;
   font-size: 15px;
@@ -653,130 +714,13 @@ select {
   gap: 8px;
   cursor: pointer;
   margin-bottom: 20px;
-  box-shadow: var(--glass-shadow);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
   width: 100%;
   transition: 0.2s;
-  backdrop-filter: blur(10px);
 }
 
 .load-music-btn:active {
-  background: var(--surface-hover);
   transform: scale(0.98);
-}
-
-.modal-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(8px);
-  display: none;
-  justify-content: center;
-  align-items: center;
-  z-index: 200;
-}
-
-.modal-overlay.show {
-  display: flex;
-  animation: fadeIn 0.3s ease;
-}
-
-.modal-box {
-  background: #ffffff;
-  width: 90%;
-  padding: 24px;
-  border-radius: 32px;
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.2);
-  border: var(--glass-border);
-  color: var(--text-primary);
-}
-
-.modal-title {
-  font-size: 20px;
-  font-weight: 800;
-  margin-bottom: 24px;
-  text-align: center;
-}
-
-/* RE-ENGINEERED HORIZONTAL STUDIO EQ */
-.eq-rack {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.eq-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: rgba(0, 0, 0, 0.03);
-  padding: 12px 16px;
-  border-radius: 16px;
-}
-
-.eq-label {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--text-primary);
-  width: 45px;
-}
-
-.eq-val {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent-color);
-  width: 40px;
-  text-align: right;
-}
-
-.eq-row input[type=range] {
-  flex: 1;
-  height: 6px;
-  appearance: none;
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 4px;
-  outline: none;
-}
-
-.eq-row input[type=range]::-webkit-slider-thumb {
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--accent-color);
-  cursor: pointer;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-}
-
-.modal-btn {
-  padding: 14px 24px;
-  border-radius: 20px;
-  border: none;
-  font-weight: 800;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 14px;
-  background: var(--accent-color);
-  color: #ffffff;
-  transition: 0.2s;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
-  flex: 1;
-}
-
-.modal-btn-secondary {
-  background: rgba(0, 0, 0, 0.05);
-  color: var(--text-primary);
-  box-shadow: none;
-  flex: 1;
 }
 
 .playlist-select {
