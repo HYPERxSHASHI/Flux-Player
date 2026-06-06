@@ -12,9 +12,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         cleanupOutdatedCaches: true,
-        // Allows the share-target feature to work properly offline
-        navigateFallback: '/Flux-Player/index.html',
-        navigateFallbackAllowlist: [/^\/Flux-Player\/share-target/]
+        navigateFallback: '/Flux-Player/index.html'
       },
       manifest: {
         id: '/Flux-Player/',
@@ -26,11 +24,28 @@ export default defineConfig({
         theme_color: '#121212',
         background_color: '#121212',
         display: 'standalone',
-        display_override: ['window-controls-overlay', 'standalone'], // Window controls capabilities
+        display_override: ['window-controls-overlay', 'standalone'],
         orientation: 'portrait',
         categories: ['music', 'utilities'],
+        
+        // --- Added Play Store Compliance Screenshots ---
+        screenshots: [
+          {
+            src: 'ICON.png', // Uses your current active asset path placeholder
+            sizes: '512x512',
+            type: 'image/png',
+            form_factor: 'narrow', // Flags it as a mobile screen layout
+            label: 'Flux Player Home Screen'
+          },
+          {
+            src: 'ICON.png',
+            sizes: '512x512',
+            type: 'image/png',
+            form_factor: 'wide', // Flags it as a desktop/tablet screen layout
+            label: 'Flux Player Audio Dashboard'
+          }
+        ],
 
-        // --- 1. APP SHORTCUTS (Long press app icon on home screen) ---
         shortcuts: [
           {
             name: 'Play Favorites',
@@ -48,7 +63,6 @@ export default defineConfig({
           }
         ],
 
-        // --- 2. SHARE TARGET (Receive audio files shared from other apps) ---
         share_target: {
           action: '/Flux-Player/share-target',
           method: 'GET',
@@ -60,7 +74,6 @@ export default defineConfig({
           }
         },
 
-        // --- 3. FILE HANDLERS (Open audio files directly with Flux Player) ---
         file_handlers: [
           {
             action: '/Flux-Player/',
@@ -70,43 +83,16 @@ export default defineConfig({
               'audio/ogg': ['.ogg'],
               'audio/aac': ['.m4a']
             },
-            icons: [
-              {
-                src: 'ICON.png',
-                sizes: '512x512',
-                type: 'image/png'
-              }
-            ],
+            icons: [{ src: 'ICON.png', sizes: '512x512', type: 'image/png' }],
             launch_type: 'single-client'
           }
         ],
 
-        // --- Standard Round/Square Icon Allocations ---
         icons: [
-          {
-            src: 'ICON.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any'
-          },
-          {
-            src: 'ICON.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'maskable'
-          },
-          {
-            src: 'ICON.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any'
-          },
-          {
-            src: 'ICON.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable'
-          }
+          { src: 'ICON.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'ICON.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+          { src: 'ICON.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'ICON.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' }
         ]
       }
     })
