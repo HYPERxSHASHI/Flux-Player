@@ -8,30 +8,47 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      injectRegister: 'inline', // 👈 Crucial: Automatically registers the service worker
+      injectRegister: 'inline',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'] // Caches all your app files for offline use
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        cleanupOutdatedCaches: true
       },
       manifest: {
+        id: '/Flux-Player/', // Uniquely identifies your app installation path
         name: 'Flux Player',
         short_name: 'Flux',
-        description: 'Premium Offline Music Player',
-        theme_color: '#e0ecef',
-        background_color: '#e0ecef',
-        display: 'standalone', // 👈 Crucial: Makes it open like a real mobile app without a browser bar
+        description: 'Premium Offline Audio and Music Player with Advanced Controls.',
+        lang: 'en-US', // Explicitly tells app stores the primary language
+        start_url: '/Flux-Player/',
+        theme_color: '#121212', // Rich dark theme color matching your UI
+        background_color: '#121212', // Seamless launch screen color background
+        display: 'standalone',
         orientation: 'portrait',
+        categories: ['music', 'utilities'],
         icons: [
+          {
+            src: 'ICON.png', 
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any'
+          },
           {
             src: 'ICON.png',
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable' // 👈 Crucial: Fits perfectly on Android round/square shapes
+            purpose: 'maskable' // Explicit separate allocation for Android shape systems
           },
           {
             src: 'ICON.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'any'
+          },
+          {
+            src: 'ICON.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
           }
         ]
       }
