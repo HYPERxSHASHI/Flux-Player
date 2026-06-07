@@ -173,9 +173,7 @@ function FluxApp() {
     loadVault();
   };
 
-  // --- DUAL-API STREAMING FALLBACK MECHANISM ---
   const fetchStreamUrl = async (id, title) => {
-    // Pipeline A: Try primary Piped/YouTube stream infrastructure
     for (let instance of PIPED_INSTANCES) {
       try {
         const res = await fetch(`${instance}/streams/${id}`);
@@ -184,10 +182,9 @@ function FluxApp() {
           const audio = data.audioStreams.find(s => s.mimeType.includes("mp4a")) || data.audioStreams[0];
           if (audio) return audio.url;
         }
-      } catch (e) { /* step down to next instance */ }
+      } catch (e) { }
     }
 
-    // Pipeline B: JioSaavn Unofficial RapidAPI Engine Fallback
     try {
       const searchRes = await fetch(`https://jio-saavan-unofficial.p.rapidapi.com/search?query=${encodeURIComponent(title)}`, {
         method: 'GET',
@@ -216,9 +213,8 @@ function FluxApp() {
           }
         }
       }
-    } catch (e) { /* skip to global network search */ }
+    } catch (e) { }
 
-    // Backup Pipeline C: Public open-source mirror endpoint
     try {
       const mirrorRes = await fetch(`https://saavn.me/search/songs?query=${encodeURIComponent(title)}`);
       if (mirrorRes.ok) {
@@ -228,7 +224,7 @@ function FluxApp() {
           return bestQuality.link;
         }
       }
-    } catch (e) { console.error("All media streaming streams exhausted."); }
+    } catch (e) { console.error("All streams exhausted."); }
 
     return null;
   };
@@ -347,13 +343,11 @@ function FluxApp() {
     }
   };
 
-  // --- MULTI-API LYRICS FALLBACK INTEGRATION ---
   const fetchLyrics = async (track) => {
     setLyrics('Loading...');
     let clnTitle = track.title.replace(/lyrics|official|video|audio|\(.*\)|\[.*\]/gi, '').trim();
     let clnArtist = track.artist.replace(/VEVO|Official|- Topic/gi, '').trim();
 
-    // Strategy 1: Public Lyrics Database
     try {
       const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(clnArtist)}/${encodeURIComponent(clnTitle)}`);
       if (res.ok) {
@@ -363,9 +357,8 @@ function FluxApp() {
           return;
         }
       }
-    } catch (e) { /* slide down to Spotify Engine */ }
+    } catch (e) { }
 
-    // Strategy 2: Spotify RapidAPI Lyrics Engine Fallback
     try {
       const spotSearch = await fetch(`https://spotify23.p.rapidapi.com/search/?q=${encodeURIComponent(clnTitle + " " + clnArtist)}&type=tracks&offset=0&limit=1`, {
         method: 'GET',
@@ -390,7 +383,7 @@ function FluxApp() {
           }
         }
       }
-    } catch (e) { /* skip to terminal baseline */ }
+    } catch (e) { }
 
     setLyrics("Lyrics unavailable for this track context.");
   };
@@ -695,6 +688,9 @@ function FluxApp() {
               <span className="material-symbols-rounded" style={{ fontSize: '42px' }}>{isPlaying ? 'pause' : 'play_arrow'}</span>
             </button>
             <button className="ctrl-btn" onClick={playNext}><span className="material-symbols-rounded">skip_next</span></button>
+            <button className="ctrl-btn" onClick={() => setIsEqOpen(true)}>
+              <span className="material-symbols-rounded">equalizer</span>
+            </button>
           </div>
 
           <div className="controls-secondary">
