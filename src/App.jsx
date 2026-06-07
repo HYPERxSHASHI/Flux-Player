@@ -173,9 +173,7 @@ function FluxApp() {
     loadVault();
   };
 
-  // --- DUAL-API STREAMING FALLBACK MECHANISM ---
   const fetchStreamUrl = async (id, title) => {
-    // Pipeline A: Try primary Piped/YouTube stream infrastructure
     for (let instance of PIPED_INSTANCES) {
       try {
         const res = await fetch(`${instance}/streams/${id}`);
@@ -184,10 +182,9 @@ function FluxApp() {
           const audio = data.audioStreams.find(s => s.mimeType.includes("mp4a")) || data.audioStreams[0];
           if (audio) return audio.url;
         }
-      } catch (e) { /* step down to next instance */ }
+      } catch (e) { }
     }
 
-    // Pipeline B: JioSaavn Unofficial RapidAPI Engine Fallback
     try {
       const searchRes = await fetch(`https://jio-saavan-unofficial.p.rapidapi.com/search?query=${encodeURIComponent(title)}`, {
         method: 'GET',
@@ -216,7 +213,7 @@ function FluxApp() {
           }
         }
       }
-    } catch (e) { /* skip to global network search */ }
+    } catch (e) { }
 
     return null;
   };
@@ -334,7 +331,6 @@ function FluxApp() {
     }
   };
 
-  // --- MULTI-API LYRICS FALLBACK INTEGRATION ---
   const fetchLyrics = async (track) => {
     setLyrics('Loading...');
     let clnTitle = track.title.replace(/lyrics|official|video|audio|\(.*\)|\[.*\]/gi, '').trim();
@@ -613,7 +609,6 @@ function FluxApp() {
             <button className="icon-btn glass-panel" onClick={() => setActiveView('home')}><span className="material-symbols-rounded">expand_more</span></button>
             <div style={{ fontWeight: 800, fontSize: '16px' }}>Now Playing</div>
 
-            {/* Top-Right Volume Control */}
             <div className="volume-wrapper">
               <button className="icon-btn glass-panel">
                 <span className="material-symbols-rounded">
@@ -674,17 +669,18 @@ function FluxApp() {
               <span className="material-symbols-rounded" style={{ fontSize: '42px' }}>{isPlaying ? 'pause' : 'play_arrow'}</span>
             </button>
             <button className="ctrl-btn" onClick={playNext}><span className="material-symbols-rounded">skip_next</span></button>
-
-            {/* EQ Button Restored Next to Skip Button */}
-            <button className="ctrl-btn" onClick={() => setIsEqOpen(true)}>
-              <span className="material-symbols-rounded">tune</span>
-            </button>
           </div>
 
+          {/* Secondary Control Deck: EQ Button repositioned perfectly in the center */}
           <div className="controls-secondary">
             <button className="ctrl-btn" onClick={() => setIsShuffle(!isShuffle)}>
               <span className="material-symbols-rounded" style={{ fontSize: '26px', color: isShuffle ? 'var(--accent-color)' : 'var(--text-primary)' }}>shuffle</span>
             </button>
+
+            <button className="ctrl-btn" onClick={() => setIsEqOpen(true)}>
+              <span className="material-symbols-rounded" style={{ fontSize: '26px' }}>tune</span>
+            </button>
+
             <button className="ctrl-btn" onClick={toggleVaultStatus}>
               <span className="material-symbols-rounded" style={{ fontSize: '28px', color: isSaved ? 'var(--accent-color)' : 'var(--text-primary)' }}>
                 {isSaved ? 'favorite' : 'favorite_border'}
