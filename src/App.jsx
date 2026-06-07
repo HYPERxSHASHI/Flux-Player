@@ -3,6 +3,7 @@ import './index.css';
 import BottomNav from './components/BottomNav';
 
 const API_KEY = "AIzaSyA-iXHMW_bHyvYiZF8BjJlAeFvG91vcm1c";
+const RAPID_API_KEY = "71af390377msh19f2934aa9f45f0p13bb41jsnde747c954e2e";
 
 const PIPED_INSTANCES = [
   "https://pipedapi.kavin.rocks",
@@ -172,9 +173,9 @@ function FluxApp() {
     loadVault();
   };
 
-  // --- NEW: DUAL-API FALLBACK ROUTING ---
+  // --- DUAL-API STREAMING FALLBACK MECHANISM ---
   const fetchStreamUrl = async (id, title) => {
-    // Pipeline A: Try YouTube/Piped
+    // Pipeline A: Try primary Piped/YouTube stream infrastructure
     for (let instance of PIPED_INSTANCES) {
       try {
         const res = await fetch(`${instance}/streams/${id}`);
@@ -183,22 +184,51 @@ function FluxApp() {
           const audio = data.audioStreams.find(s => s.mimeType.includes("mp4a")) || data.audioStreams[0];
           if (audio) return audio.url;
         }
-      } catch (e) { /* silent skip */ }
+      } catch (e) { /* step down to next instance */ }
     }
 
-    // Pipeline B: JioSaavn Fallback API (Resilient streaming)
+    // Pipeline B: JioSaavn Unofficial RapidAPI Engine Fallback
     try {
-      const cleanTitle = title.replace(/official|video|audio|lyrics|\(.*\)|\[.*\]/gi, '').trim();
-      const saavnRes = await fetch(`https://saavn.me/search/songs?query=${encodeURIComponent(cleanTitle)}`);
-      if (saavnRes.ok) {
-        const saavnData = await saavnRes.json();
-        if (saavnData.success && saavnData.data.results.length > 0) {
-          const match = saavnData.data.results[0];
-          const bestQuality = match.downloadUrl.find(q => q.quality === "320kbps") || match.downloadUrl[match.downloadUrl.length - 1];
+      const searchRes = await fetch(`https://jio-saavan-unofficial.p.rapidapi.com/search?query=${encodeURIComponent(title)}`, {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': RAPID_API_KEY,
+          'x-rapidapi-host': 'jio-saavan-unofficial.p.rapidapi.com'
+        }
+      });
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        const mediaUrl = searchData?.results?.[0]?.encrypted_media_url;
+
+        if (mediaUrl) {
+          const songRes = await fetch("https://jio-saavan-unofficial.p.rapidapi.com/getsong", {
+            method: "POST",
+            headers: {
+              'x-rapidapi-key': RAPID_API_KEY,
+              'x-rapidapi-host': "jio-saavan-unofficial.p.rapidapi.com",
+              'Content-Type': "application/json"
+            },
+            body: JSON.stringify({ encrypted_media_url: mediaUrl })
+          });
+          if (songRes.ok) {
+            const songData = await songRes.json();
+            return songData.media_url || songData.download_url;
+          }
+        }
+      }
+    } catch (e) { /* skip to global network search */ }
+
+    // Backup Pipeline C: Public open-source mirror endpoint
+    try {
+      const mirrorRes = await fetch(`https://saavn.me/search/songs?query=${encodeURIComponent(title)}`);
+      if (mirrorRes.ok) {
+        const mirrorData = await mirrorRes.json();
+        if (mirrorData.success && mirrorData.data.results.length > 0) {
+          const bestQuality = mirrorData.data.results[0].downloadUrl.find(q => q.quality === "320kbps") || mirrorData.data.results[0].downloadUrl[mirrorData.data.results[0].downloadUrl.length - 1];
           return bestQuality.link;
         }
       }
-    } catch (e) { /* silent skip */ }
+    } catch (e) { console.error("All media streaming streams exhausted."); }
 
     return null;
   };
@@ -317,19 +347,52 @@ function FluxApp() {
     }
   };
 
+  // --- MULTI-API LYRICS FALLBACK INTEGRATION ---
   const fetchLyrics = async (track) => {
     setLyrics('Loading...');
+    let clnTitle = track.title.replace(/lyrics|official|video|audio|\(.*\)|\[.*\]/gi, '').trim();
+    let clnArtist = track.artist.replace(/VEVO|Official|- Topic/gi, '').trim();
+
+    // Strategy 1: Public Lyrics Database
     try {
-      let clnTitle = track.title.replace(/lyrics|official|video|audio|\(.*\)|\[.*\]/gi, '').trim();
-      let clnArtist = track.artist.replace(/VEVO|Official|- Topic/gi, '').trim();
       const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(clnArtist)}/${encodeURIComponent(clnTitle)}`);
       if (res.ok) {
         const data = await res.json();
-        setLyrics(data.lyrics.replace(/\n/g, '<br>'));
-      } else {
-        setLyrics("Lyrics not found.");
+        if (data.lyrics) {
+          setLyrics(data.lyrics.replace(/\n/g, '<br>'));
+          return;
+        }
       }
-    } catch (e) { setLyrics("Network link failed."); }
+    } catch (e) { /* slide down to Spotify Engine */ }
+
+    // Strategy 2: Spotify RapidAPI Lyrics Engine Fallback
+    try {
+      const spotSearch = await fetch(`https://spotify23.p.rapidapi.com/search/?q=${encodeURIComponent(clnTitle + " " + clnArtist)}&type=tracks&offset=0&limit=1`, {
+        method: 'GET',
+        headers: { 'x-rapidapi-key': RAPID_API_KEY, 'x-rapidapi-host': 'spotify23.p.rapidapi.com' }
+      });
+      if (spotSearch.ok) {
+        const spotData = await spotSearch.json();
+        const trackId = spotData?.tracks?.items?.[0]?.data?.id;
+
+        if (trackId) {
+          const lyricsRes = await fetch(`https://spotify23.p.rapidapi.com/track_lyrics/?id=${trackId}`, {
+            method: "GET",
+            headers: { 'x-rapidapi-key': RAPID_API_KEY, 'x-rapidapi-host': "spotify23.p.rapidapi.com" }
+          });
+          if (lyricsRes.ok) {
+            const lyricData = await lyricsRes.json();
+            const lines = lyricData?.lyrics?.lines?.map(l => l.words).join('<br>') || "";
+            if (lines) {
+              setLyrics(lines);
+              return;
+            }
+          }
+        }
+      }
+    } catch (e) { /* skip to terminal baseline */ }
+
+    setLyrics("Lyrics unavailable for this track context.");
   };
 
   const extractTheme = (url) => {
@@ -451,7 +514,6 @@ function FluxApp() {
     engine.currentTime = percent * progress.total;
   };
 
-  // --- NEW: VOLUME HANDLER ---
   const handleVolumeChange = (e) => {
     const newVol = parseFloat(e.target.value);
     setVolume(newVol);
@@ -566,7 +628,6 @@ function FluxApp() {
             <button className="icon-btn glass-panel" onClick={() => setActiveView('home')}><span className="material-symbols-rounded">expand_more</span></button>
             <div style={{ fontWeight: 800, fontSize: '16px' }}>Now Playing</div>
 
-            {/* NEW: VOLUME HOVER SLIDER */}
             <div className="volume-wrapper">
               <button className="icon-btn glass-panel">
                 <span className="material-symbols-rounded">
@@ -594,7 +655,6 @@ function FluxApp() {
           <div className="artwork-container" style={{ backgroundImage: displayThumb ? `url('${displayThumb}')` : 'none' }}>
             {!displayThumb && <div className="glass-pill glass-panel"><span className="material-symbols-rounded">music_note</span></div>}
 
-            {/* NEW: PURE CSS SOUNDWAVE VISUALIZER */}
             <div className={`css-visualizer ${isPlaying ? 'active' : ''}`}>
               <div className="viz-bar"></div><div className="viz-bar"></div>
               <div className="viz-bar"></div><div className="viz-bar"></div>
@@ -693,7 +753,6 @@ function FluxApp() {
         </div>
       )}
 
-      {/* ================= BOTTOM NAV COMPONENT ================= */}
       <BottomNav activeView={activeView} setActiveView={setActiveView} />
 
       {/* ================= EQ MODAL ================= */}
