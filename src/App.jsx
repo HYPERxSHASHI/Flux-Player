@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import './index.css';
 import BottomNav from './components/BottomNav';
 
+// Official Search Engine + Fallback Stream Nodes
 const API_KEY = "AIzaSyA-iXHMW_bHyvYiZF8BjJlAeFvG91vcm1c";
 const RAPID_API_KEY = "71af390377msh19f2934aa9f45f0p13bb41jsnde747c954e2e";
 
@@ -19,7 +20,7 @@ const initDB = () => new Promise((resolve) => {
     if (!db.objectStoreNames.contains("tracks")) db.createObjectStore("tracks", { keyPath: "id" });
   };
   req.onsuccess = e => { db = e.target.result; resolve(); };
-  req.onerror = () => { console.error("Database initialization failed"); resolve(); };
+  req.onerror = () => { console.error("Database init failed"); resolve(); };
 });
 
 const saveToDB = (track) => new Promise(res => {
@@ -62,7 +63,7 @@ const generateDynamicCover = (text) => {
   let hash = 0;
   for (let i = 0; i < text.length; i++) hash = text.charCodeAt(i) + ((hash << 5) - hash);
   const hue = Math.abs(hash % 360);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300"><rect width="300" height="300" fill="hsl(${hue},60%,40%)"/><text x="150" y="160" font-family="sans-serif" font-size="80" font-weight="bold" fill="white" text-anchor="middle" opacity="0.6">${text.charAt(0).toUpperCase()}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300"><rect width="300" height="300" fill="hsl(${hue},40%,25%)"/><text x="150" y="160" font-family="sans-serif" font-size="80" font-weight="bold" fill="white" text-anchor="middle" opacity="0.8">${text.charAt(0).toUpperCase()}</text></svg>`;
   return `data:image/svg+xml;base64,${btoa(svg)}`;
 };
 
@@ -72,11 +73,11 @@ class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: '40px', textAlign: 'center', fontFamily: 'sans-serif', background: '#e0ecef', height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-          <h2>Engine Recovery Mode</h2>
-          <p>A critical rendering exception was intercepted.</p>
-          <button onClick={() => window.location.reload()} style={{ padding: '14px 28px', marginTop: '20px', background: '#3b7b80', color: '#fff', border: 'none', borderRadius: '24px', fontWeight: 'bold', cursor: 'pointer' }}>
-            Reboot Engine
+        <div style={{ padding: '40px', textAlign: 'center', background: '#0f171e', color: '#fff', height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <h2>Engine Recovery</h2>
+          <p style={{ color: '#94a3b8', marginTop: '10px' }}>A background fault was intercepted.</p>
+          <button onClick={() => window.location.reload()} style={{ padding: '16px 30px', marginTop: '30px', background: '#14b8a6', color: '#fff', border: 'none', borderRadius: '30px', fontWeight: 'bold' }}>
+            Restart Engine
           </button>
         </div>
       );
@@ -99,7 +100,7 @@ function FluxApp() {
 
   const [avMode, setAvMode] = useState('song');
   const [progress, setProgress] = useState({ current: 0, total: 0 });
-  const [lyrics, setLyrics] = useState('Searching Database...');
+  const [lyrics, setLyrics] = useState('Connecting to Lyric Database...');
 
   const [vaultTracks, setVaultTracks] = useState([]);
   const [playlistFilter, setPlaylistFilter] = useState('all');
@@ -125,7 +126,8 @@ function FluxApp() {
     initDB().then(() => loadVault());
   }, []);
 
-  const showToast = (msg) => {
+  const showToast = (msg, silent = false) => {
+    if (silent) return; // Hook to mute specific system messages
     setToast({ message: msg, visible: true });
     setTimeout(() => setToast({ message: '', visible: false }), 2500);
   };
@@ -135,6 +137,7 @@ function FluxApp() {
     setVaultTracks(tracks);
   };
 
+  // Official YouTube Data API Search
   const handleSearch = async (e, directQuery = null) => {
     if (e && e.preventDefault) e.preventDefault();
     const queryToUse = directQuery || searchQuery.trim();
@@ -142,7 +145,7 @@ function FluxApp() {
 
     setIsSearching(true);
     try {
-      const q = encodeURIComponent(queryToUse + " official audio OR lyrics");
+      const q = encodeURIComponent(queryToUse + " official audio");
       const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=15&q=${q}&type=video&key=${API_KEY}`);
       const data = await res.json();
       setSearchResults(data.items || []);
@@ -169,11 +172,13 @@ function FluxApp() {
       };
       await saveToDB(track);
     }
-    showToast(`✅ Added ${files.length} tracks!`);
+    showToast(`✅ Added ${files.length} local files!`);
     loadVault();
   };
 
+  // --- DUAL-API STREAMING PIPELINE ---
   const fetchStreamUrl = async (id, title) => {
+    // 1. YouTube Piped Router
     for (let instance of PIPED_INSTANCES) {
       try {
         const res = await fetch(`${instance}/streams/${id}`);
@@ -182,9 +187,10 @@ function FluxApp() {
           const audio = data.audioStreams.find(s => s.mimeType.includes("mp4a")) || data.audioStreams[0];
           if (audio) return audio.url;
         }
-      } catch (e) { }
+      } catch (e) { /* rotate */ }
     }
 
+    // 2. JioSaavn RapidAPI Fallback
     try {
       const searchRes = await fetch(`https://jio-saavan-unofficial.p.rapidapi.com/search?query=${encodeURIComponent(title)}`, {
         method: 'GET',
@@ -196,7 +202,6 @@ function FluxApp() {
       if (searchRes.ok) {
         const searchData = await searchRes.json();
         const mediaUrl = searchData?.results?.[0]?.encrypted_media_url;
-
         if (mediaUrl) {
           const songRes = await fetch("https://jio-saavan-unofficial.p.rapidapi.com/getsong", {
             method: "POST",
@@ -211,6 +216,18 @@ function FluxApp() {
             const songData = await songRes.json();
             return songData.media_url || songData.download_url;
           }
+        }
+      }
+    } catch (e) { /* route to mirror */ }
+
+    // 3. Open Source Saavn Mirror Fallback
+    try {
+      const mirrorRes = await fetch(`https://saavn.me/search/songs?query=${encodeURIComponent(title)}`);
+      if (mirrorRes.ok) {
+        const mirrorData = await mirrorRes.json();
+        if (mirrorData.success && mirrorData.data.results.length > 0) {
+          const best = mirrorData.data.results[0].downloadUrl.find(q => q.quality === "320kbps") || mirrorData.data.results[0].downloadUrl[mirrorData.data.results[0].downloadUrl.length - 1];
+          return best.link;
         }
       }
     } catch (e) { }
@@ -297,16 +314,9 @@ function FluxApp() {
         const objectUrl = URL.createObjectURL(trackInfo.blob);
         engine.src = objectUrl;
         engine.load();
-        if (trackInfo.blob.type && trackInfo.blob.type.includes('video') && videoRef.current) {
-          videoRef.current.src = objectUrl;
-          videoRef.current.load();
-        } else {
-          if (videoRef.current) videoRef.current.src = "";
-        }
       } else {
         const url = await fetchStreamUrl(trackInfo.id, trackInfo.title);
         if (playIdRef.current !== currentPlayId) return;
-
         if (url) {
           engine.src = url;
           engine.load();
@@ -322,7 +332,6 @@ function FluxApp() {
           initWebAudio();
           setIsPlaying(true);
           extractTheme(trackInfo.thumb);
-          if (avMode === 'video' && videoRef.current && videoRef.current.src) videoRef.current.play();
         }).catch(() => setIsPlaying(false));
       }
       fetchLyrics(trackInfo);
@@ -331,8 +340,9 @@ function FluxApp() {
     }
   };
 
+  // --- LYRICS FALLBACK ---
   const fetchLyrics = async (track) => {
-    setLyrics('Loading...');
+    setLyrics('Analyzing Vocals...');
     let clnTitle = track.title.replace(/lyrics|official|video|audio|\(.*\)|\[.*\]/gi, '').trim();
     let clnArtist = track.artist.replace(/VEVO|Official|- Topic/gi, '').trim();
 
@@ -373,7 +383,7 @@ function FluxApp() {
       }
     } catch (e) { }
 
-    setLyrics("Lyrics unavailable for this track context.");
+    setLyrics("Lyrics unavailable for this track.");
   };
 
   const extractTheme = (url) => {
@@ -385,8 +395,9 @@ function FluxApp() {
       try {
         const d = ctx.getImageData(0, 0, 50, 50).data; let r = 0, g = 0, b = 0, c = 0;
         for (let i = 0; i < d.length; i += 16) { r += d[i]; g += d[i + 1]; b += d[i + 2]; c++; }
-        document.documentElement.style.setProperty('--accent-color', `rgb(${Math.max(0, r / c - 40)}, ${Math.max(0, g / c - 40)}, ${Math.max(0, b / c - 40)})`);
-        document.documentElement.style.setProperty('--blob-color', `rgba(${r}, ${g}, ${b}, 0.5)`);
+        // Darkened the dynamic theme generation for premium look
+        document.documentElement.style.setProperty('--accent-color', `rgb(${Math.max(0, r / c - 20)}, ${Math.max(0, g / c - 20)}, ${Math.max(0, b / c - 20)})`);
+        document.documentElement.style.setProperty('--blob-color', `rgba(${r}, ${g}, ${b}, 0.3)`);
       } catch (e) { }
     }; img.src = url;
   };
@@ -399,10 +410,6 @@ function FluxApp() {
     const cur = engine.currentTime || 0;
     const tot = engine.duration || 0;
     setProgress({ current: cur, total: tot });
-
-    if (avMode === 'video' && videoRef.current && Math.abs(videoRef.current.currentTime - cur) > 0.5) {
-      videoRef.current.currentTime = cur;
-    }
 
     if (tot > 0 && tot - cur <= 5 && !isCrossfading.current && currentIndex + 1 < queue.length) {
       isCrossfading.current = true;
@@ -461,11 +468,9 @@ function FluxApp() {
     const engine = activeAudioRef.current === 1 ? audioRef1.current : audioRef2.current;
     if (isPlaying) {
       engine.pause();
-      if (videoRef.current) videoRef.current.pause();
     } else {
       if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume();
       engine.play();
-      if (avMode === 'video' && videoRef.current) videoRef.current.play();
     }
     setIsPlaying(!isPlaying);
   };
@@ -510,21 +515,21 @@ function FluxApp() {
     const exists = vaultTracks.find(t => t.id === track.id);
     if (exists) {
       await deleteFromDB(track.id);
-      showToast("🗑️ Removed from Vault");
+      showToast("Removed from Vault");
     } else {
       try {
         const vaultItem = { id: track.id, title: track.title, artist: track.artist, thumb: track.thumb, playlist: 'favorites' };
         if (track.blob) vaultItem.blob = track.blob;
         await saveToDB(vaultItem);
-        showToast("⭐ Added to Vault");
-      } catch (e) { showToast("❌ Database Error"); }
+        showToast("Added to Vault");
+      } catch (e) { showToast("Database Error"); }
     }
     loadVault();
   };
 
   const currentTrack = (queue && queue.length > 0 && currentIndex >= 0 && queue[currentIndex])
     ? queue[currentIndex]
-    : { id: 'default', title: 'Flux Player', artist: 'Engine Ready', thumb: null, blob: null };
+    : { id: 'default', title: 'Flux Engine', artist: 'System Standby', thumb: null, blob: null };
 
   const percentComplete = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
   const displayedVault = playlistFilter === 'all' ? vaultTracks : vaultTracks.filter(t => t.playlist === playlistFilter);
@@ -538,20 +543,29 @@ function FluxApp() {
         <div className="blob blob-2"></div>
       </div>
 
-      {/* ================= 1. HOME VIEW ================= */}
+      {/* ================= 1. HOME VIEW (NEW VIBE DECK) ================= */}
       {activeView === 'home' && (
         <div className="view active-view">
-          <div className="top-header"><div className="library-title">Home</div></div>
+          <div className="top-header stagger-1"><div className="library-title">Discover</div></div>
 
-          <div style={{ fontWeight: 800, fontSize: '18px', marginBottom: '15px' }}>Top Anthems</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '30px' }}>
-            <div className="song-item glass-panel" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '20px' }} onClick={() => handleSearch(null, 'Max Verstappen Song official audio')}>
-              <div style={{ fontSize: '32px', marginBottom: '8px' }}>🏎️</div>
-              <div style={{ fontWeight: 800, fontSize: '15px' }}>F1 Drivers<br /><span style={{ fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>Super Max & More</span></div>
+          <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-secondary)', marginBottom: '16px' }} className="stagger-2">Select your vibe</div>
+
+          <div className="vibe-grid stagger-3">
+            <div className="vibe-card glass-panel" style={{ background: 'linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(0,0,0,0.4))' }} onClick={() => handleSearch(null, 'Max Verstappen Song official audio')}>
+              <div className="vibe-icon">🏎️</div>
+              <div className="vibe-title">F1 Anthems</div>
             </div>
-            <div className="song-item glass-panel" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '20px' }} onClick={() => handleSearch(null, 'Global Top 50 Hits official audio')}>
-              <div style={{ fontSize: '32px', marginBottom: '8px' }}>🌍</div>
-              <div style={{ fontWeight: 800, fontSize: '15px' }}>Global Top 50<br /><span style={{ fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>Universal Hits</span></div>
+            <div className="vibe-card glass-panel" style={{ background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(0,0,0,0.4))' }} onClick={() => handleSearch(null, 'Global Top 50 Hits official audio')}>
+              <div className="vibe-icon">🌍</div>
+              <div className="vibe-title">Global Top 50</div>
+            </div>
+            <div className="vibe-card glass-panel" style={{ background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(0,0,0,0.4))' }} onClick={() => handleSearch(null, 'Lofi chill hip hop beats')}>
+              <div className="vibe-icon">☕</div>
+              <div className="vibe-title">Lofi Focus</div>
+            </div>
+            <div className="vibe-card glass-panel" style={{ background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(0,0,0,0.4))' }} onClick={() => handleSearch(null, 'High Energy Workout Playlist')}>
+              <div className="vibe-icon">⚡</div>
+              <div className="vibe-title">Workout Boost</div>
             </div>
           </div>
         </div>
@@ -560,26 +574,26 @@ function FluxApp() {
       {/* ================= 2. SEARCH VIEW ================= */}
       {activeView === 'search' && (
         <div className="view active-view">
-          <div className="top-header"><div className="library-title">Discover</div></div>
-          <form onSubmit={handleSearch} style={{ display: 'flex', gap: '10px' }}>
+          <div className="top-header stagger-1"><div className="library-title">Search</div></div>
+          <form onSubmit={handleSearch} style={{ display: 'flex', gap: '12px', marginBottom: '10px' }} className="stagger-2">
             <input
               type="text"
               className="search-bar glass-panel"
-              placeholder="Search artists, songs..."
+              placeholder="Artists, songs, or podcasts..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
-            <button type="submit" className="icon-btn glass-panel" style={{ width: '54px', height: '54px', borderRadius: '20px', flexShrink: 0 }}>
+            <button type="submit" className="icon-btn glass-panel" style={{ width: '56px', height: '56px', borderRadius: '20px', flexShrink: 0 }}>
               <span className="material-symbols-rounded">search</span>
             </button>
           </form>
 
           {isSearching && <div className="loader" style={{ display: 'block' }}></div>}
 
-          <div className="song-list" style={{ marginTop: '16px' }}>
+          <div className="song-list stagger-3" style={{ marginTop: '16px' }}>
             {searchResults.length === 0 && !isSearching ? (
-              <div style={{ textAlign: 'center', marginTop: '60px', fontWeight: 600, fontSize: '16px', color: 'var(--text-secondary)' }}>
-                Find your rhythm.<br /><span style={{ fontSize: '13px', fontWeight: 500, opacity: 0.8 }}>Dual API Fallback Engine Active.</span>
+              <div style={{ textAlign: 'center', marginTop: '80px', fontWeight: 600, fontSize: '15px', color: 'var(--text-secondary)' }}>
+                Find your rhythm.<br /><span style={{ fontSize: '13px', fontWeight: 500, opacity: 0.6 }}>Dual-API Routing Engine Active.</span>
               </div>
             ) : (
               searchResults.map((item, idx) => (
@@ -605,10 +619,11 @@ function FluxApp() {
       {/* ================= 3. PLAYER VIEW ================= */}
       {activeView === 'nowPlaying' && (
         <div className="view active-view">
-          <div className="top-header">
+          <div className="top-header stagger-1">
             <button className="icon-btn glass-panel" onClick={() => setActiveView('home')}><span className="material-symbols-rounded">expand_more</span></button>
-            <div style={{ fontWeight: 800, fontSize: '16px' }}>Now Playing</div>
+            <div style={{ fontWeight: 800, fontSize: '15px', letterSpacing: '1px', textTransform: 'uppercase' }}>Now Playing</div>
 
+            {/* Top-Right Volume Dropdown */}
             <div className="volume-wrapper">
               <button className="icon-btn glass-panel">
                 <span className="material-symbols-rounded">
@@ -616,42 +631,30 @@ function FluxApp() {
                 </span>
               </button>
               <div className="volume-slider-container glass-panel-heavy">
-                <input
-                  type="range"
-                  min="0" max="1" step="0.05"
-                  value={volume}
-                  onChange={handleVolumeChange}
-                  className="volume-slider"
-                />
+                <input type="range" min="0" max="1" step="0.05" value={volume} onChange={handleVolumeChange} className="volume-slider" />
               </div>
             </div>
           </div>
 
-          <div className="av-toggle-container glass-panel">
+          <div className="av-toggle-container glass-panel stagger-2">
             <button className={`av-btn ${avMode === 'song' ? 'active' : ''}`} onClick={() => setAvMode('song')}>Song</button>
             <button className={`av-btn ${avMode === 'lyrics' ? 'active' : ''}`} onClick={() => setAvMode('lyrics')}>Lyrics</button>
-            <button className={`av-btn ${avMode === 'video' ? 'active' : ''}`} onClick={() => { setAvMode('video'); if (isPlaying && videoRef.current) videoRef.current.play(); }}>Video</button>
           </div>
 
-          <div className="artwork-container" style={{ backgroundImage: displayThumb ? `url('${displayThumb}')` : 'none' }}>
+          <div className="artwork-container stagger-3" style={{ backgroundImage: displayThumb ? `url('${displayThumb}')` : 'none' }}>
             {!displayThumb && <div className="glass-pill glass-panel"><span className="material-symbols-rounded">music_note</span></div>}
 
-            <div id="video-player-container" style={{ display: avMode === 'video' ? 'block' : 'none' }}>
-              <video ref={videoRef} playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}></video>
-            </div>
-
             <div className="lyrics-overlay glass-panel-heavy" style={{ display: avMode === 'lyrics' ? 'flex' : 'none' }}>
-              <div className="lyrics-title">Lyrics</div>
               <div className="lyrics-text" dangerouslySetInnerHTML={{ __html: lyrics }}></div>
             </div>
           </div>
 
-          <div className="track-info">
+          <div className="track-info stagger-4">
             <div className="track-title">{currentTrack.title}</div>
             <div className="track-artist">{currentTrack.artist}</div>
           </div>
 
-          <div className="progress-area">
+          <div className="progress-area stagger-4">
             <div className="progress-bar-container" onClick={handleProgressClick}>
               <div className="progress-track"></div>
               <div className="progress-fill" style={{ width: `${percentComplete}%` }}></div>
@@ -663,7 +666,7 @@ function FluxApp() {
             </div>
           </div>
 
-          <div className="controls-main">
+          <div className="controls-main stagger-4">
             <button className="ctrl-btn" onClick={playPrev}><span className="material-symbols-rounded">skip_previous</span></button>
             <button className="play-btn" onClick={togglePlay}>
               <span className="material-symbols-rounded" style={{ fontSize: '42px' }}>{isPlaying ? 'pause' : 'play_arrow'}</span>
@@ -671,10 +674,9 @@ function FluxApp() {
             <button className="ctrl-btn" onClick={playNext}><span className="material-symbols-rounded">skip_next</span></button>
           </div>
 
-          {/* Secondary Control Deck: EQ Button repositioned perfectly in the center */}
-          <div className="controls-secondary">
-            <button className="ctrl-btn" onClick={() => setIsShuffle(!isShuffle)}>
-              <span className="material-symbols-rounded" style={{ fontSize: '26px', color: isShuffle ? 'var(--accent-color)' : 'var(--text-primary)' }}>shuffle</span>
+          <div className="controls-secondary stagger-4">
+            <button className="ctrl-btn" onClick={() => setIsShuffle(!isShuffle)} style={{ color: isShuffle ? 'var(--accent-color)' : 'var(--text-secondary)' }}>
+              <span className="material-symbols-rounded" style={{ fontSize: '24px' }}>shuffle</span>
             </button>
 
             <button className="ctrl-btn" onClick={() => setIsEqOpen(true)}>
@@ -682,7 +684,7 @@ function FluxApp() {
             </button>
 
             <button className="ctrl-btn" onClick={toggleVaultStatus}>
-              <span className="material-symbols-rounded" style={{ fontSize: '28px', color: isSaved ? 'var(--accent-color)' : 'var(--text-primary)' }}>
+              <span className="material-symbols-rounded" style={{ fontSize: '26px', color: isSaved ? 'var(--accent-color)' : 'var(--text-secondary)' }}>
                 {isSaved ? 'favorite' : 'favorite_border'}
               </span>
             </button>
@@ -693,26 +695,26 @@ function FluxApp() {
       {/* ================= 4. VAULT VIEW ================= */}
       {activeView === 'library' && (
         <div className="view active-view">
-          <div className="top-header" style={{ paddingLeft: 0 }}><div className="library-title">The Vault</div></div>
+          <div className="top-header stagger-1" style={{ paddingLeft: 0 }}><div className="library-title">Vault</div></div>
 
-          <select className="playlist-select glass-panel" value={playlistFilter} onChange={(e) => setPlaylistFilter(e.target.value)}>
-            <option value="all">All Saved Tracks</option>
+          <select className="playlist-select glass-panel stagger-2" value={playlistFilter} onChange={(e) => setPlaylistFilter(e.target.value)}>
+            <option value="all">All Offline Audio</option>
             <option value="favorites">Favorites</option>
           </select>
 
-          <label className="load-music-btn glass-panel">
-            <span className="material-symbols-rounded">folder_open</span> Add Local Music
+          <label className="load-music-btn glass-panel stagger-3">
+            <span className="material-symbols-rounded">folder_open</span> Import Local Media
             <input type="file" accept="audio/*,video/*" multiple style={{ display: 'none' }} onChange={handleLocalUpload} />
           </label>
 
-          <div style={{ fontSize: '14px', marginBottom: '16px', fontWeight: 800, color: 'var(--text-secondary)' }}>
-            💾 {displayedVault.length} tracks registered
+          <div style={{ fontSize: '13px', marginBottom: '16px', fontWeight: 700, color: 'var(--text-secondary)' }} className="stagger-4">
+            💾 {displayedVault.length} Secure Blocks
           </div>
 
-          <div className="song-list">
+          <div className="song-list stagger-4">
             {displayedVault.length === 0 ? (
-              <div style={{ textAlign: 'center', marginTop: '40px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Your Vault is empty.<br /><span style={{ fontSize: '12px' }}>Heart a song or load local media.</span>
+              <div style={{ textAlign: 'center', marginTop: '60px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Storage Empty.<br /><span style={{ fontSize: '12px', opacity: 0.7 }}>Save streams to unlock offline playback.</span>
               </div>
             ) : (
               displayedVault.map((t, idx) => {
@@ -740,24 +742,18 @@ function FluxApp() {
         <div className="modal-overlay show">
           <div className="modal-box glass-panel-heavy">
             <div className="modal-title">DSP Tuner</div>
-
             <div className="eq-rack">
               {[60, 230, 910, 3000, 14000].map(freq => (
                 <div key={freq} className="eq-row">
                   <span className="eq-label">{freq < 1000 ? freq + 'Hz' : (freq / 1000) + 'k'}</span>
-                  <input
-                    type="range" min="-12" max="12"
-                    value={eqValues[freq]}
-                    onChange={(e) => handleEqChange(freq, e.target.value)}
-                  />
+                  <input type="range" min="-12" max="12" value={eqValues[freq]} onChange={(e) => handleEqChange(freq, e.target.value)} />
                   <span className="eq-val">{eqValues[freq]}dB</span>
                 </div>
               ))}
             </div>
-
             <div className="modal-actions">
-              <button className="modal-btn modal-btn-secondary" onClick={applyCopperPreset}>Copper Preset</button>
-              <button className="modal-btn save" onClick={() => setIsEqOpen(false)}>Done</button>
+              <button className="modal-btn modal-btn-secondary" onClick={applyCopperPreset}>Copper Profile</button>
+              <button className="modal-btn save" onClick={() => setIsEqOpen(false)}>Apply</button>
             </div>
           </div>
         </div>
