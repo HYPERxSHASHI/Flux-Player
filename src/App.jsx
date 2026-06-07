@@ -81,7 +81,7 @@ class ErrorBoundary extends React.Component {
         </div>
       );
     }
-    return this.props.children; 
+    return this.props.children;
   }
 }
 
@@ -90,17 +90,17 @@ function FluxApp() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
-  
+
   const [queue, setQueue] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(-1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isShuffle, setIsShuffle] = useState(false);
   const [volume, setVolume] = useState(1.0);
-  
+
   const [avMode, setAvMode] = useState('song');
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [lyrics, setLyrics] = useState('Searching Database...');
-  
+
   const [vaultTracks, setVaultTracks] = useState([]);
   const [playlistFilter, setPlaylistFilter] = useState('all');
   const [toast, setToast] = useState({ message: '', visible: false });
@@ -110,13 +110,13 @@ function FluxApp() {
   const audioRef1 = useRef(null);
   const audioRef2 = useRef(null);
   const videoRef = useRef(null);
-  
-  const activeAudioRef = useRef(1); 
+
+  const activeAudioRef = useRef(1);
   const isCrossfading = useRef(false);
   const fadeIntervalRef = useRef(null);
   const crossfadeTimeoutRef = useRef(null);
   const playIdRef = useRef(0);
-  const volumeRef = useRef(1.0); 
+  const volumeRef = useRef(1.0);
 
   const audioCtxRef = useRef(null);
   const filtersRef = useRef([]);
@@ -127,7 +127,7 @@ function FluxApp() {
 
   const showToast = (msg) => {
     setToast({ message: msg, visible: true });
-    setTimeout(() => setToast({ message: '', visible: false }), 2000);
+    setTimeout(() => setToast({ message: '', visible: false }), 2500);
   };
 
   const loadVault = async () => {
@@ -146,9 +146,9 @@ function FluxApp() {
       const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=15&q=${q}&type=video&key=${API_KEY}`);
       const data = await res.json();
       setSearchResults(data.items || []);
-      if(directQuery) {
-          setSearchQuery(directQuery);
-          setActiveView('search');
+      if (directQuery) {
+        setSearchQuery(directQuery);
+        setActiveView('search');
       }
     } catch (err) { showToast("❌ Search Engine Offline"); }
     setIsSearching(false);
@@ -157,14 +157,14 @@ function FluxApp() {
   const handleLocalUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
-    
+
     for (let file of files) {
       const track = {
         id: 'local_' + Date.now() + Math.random(),
         title: file.name.replace(/\.[^/.]+$/, ""),
         artist: 'Local Media',
         thumb: generateDynamicCover(file.name),
-        blob: file, 
+        blob: file,
         playlist: 'all'
       };
       await saveToDB(track);
@@ -177,74 +177,62 @@ function FluxApp() {
   const fetchStreamUrl = async (id, title) => {
     // Pipeline A: Try primary Piped/YouTube stream infrastructure
     for (let instance of PIPED_INSTANCES) {
-        try {
-          const res = await fetch(`${instance}/streams/${id}`);
-          if (res.ok) {
-            const data = await res.json();
-            const audio = data.audioStreams.find(s => s.mimeType.includes("mp4a")) || data.audioStreams[0];
-            if (audio) return audio.url;
-          }
-        } catch (e) { /* step down to next instance */ } 
+      try {
+        const res = await fetch(`${instance}/streams/${id}`);
+        if (res.ok) {
+          const data = await res.json();
+          const audio = data.audioStreams.find(s => s.mimeType.includes("mp4a")) || data.audioStreams[0];
+          if (audio) return audio.url;
+        }
+      } catch (e) { /* step down to next instance */ }
     }
-    
+
     // Pipeline B: JioSaavn Unofficial RapidAPI Engine Fallback
     try {
-        const searchRes = await fetch(`https://jio-saavan-unofficial.p.rapidapi.com/search?query=${encodeURIComponent(title)}`, {
-            method: 'GET',
-            headers: {
-                'x-rapidapi-key': RAPID_API_KEY,
-                'x-rapidapi-host': 'jio-saavan-unofficial.p.rapidapi.com'
-            }
-        });
-        if (searchRes.ok) {
-            const searchData = await searchRes.json();
-            const mediaUrl = searchData?.results?.[0]?.encrypted_media_url;
-            
-            if (mediaUrl) {
-                const songRes = await fetch("https://jio-saavan-unofficial.p.rapidapi.com/getsong", {
-                    method: "POST",
-                    headers: {
-                        'x-rapidapi-key': RAPID_API_KEY,
-                        'x-rapidapi-host': "jio-saavan-unofficial.p.rapidapi.com",
-                        'Content-Type': "application/json"
-                    },
-                    body: JSON.stringify({ encrypted_media_url: mediaUrl })
-                });
-                if (songRes.ok) {
-                    const songData = await songRes.json();
-                    return songData.media_url || songData.download_url;
-                }
-            }
+      const searchRes = await fetch(`https://jio-saavan-unofficial.p.rapidapi.com/search?query=${encodeURIComponent(title)}`, {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-key': RAPID_API_KEY,
+          'x-rapidapi-host': 'jio-saavan-unofficial.p.rapidapi.com'
         }
-    } catch (e) { /* skip to global network search */ }
+      });
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        const mediaUrl = searchData?.results?.[0]?.encrypted_media_url;
 
-    // Backup Pipeline C: Public open-source mirror endpoint
-    try {
-        const mirrorRes = await fetch(`https://saavn.me/search/songs?query=${encodeURIComponent(title)}`);
-        if (mirrorRes.ok) {
-            const mirrorData = await mirrorRes.json();
-            if (mirrorData.success && mirrorData.data.results.length > 0) {
-                const bestQuality = mirrorData.data.results[0].downloadUrl.find(q => q.quality === "320kbps") || mirrorData.data.results[0].downloadUrl[mirrorData.data.results[0].downloadUrl.length - 1];
-                return bestQuality.link;
-            }
+        if (mediaUrl) {
+          const songRes = await fetch("https://jio-saavan-unofficial.p.rapidapi.com/getsong", {
+            method: "POST",
+            headers: {
+              'x-rapidapi-key': RAPID_API_KEY,
+              'x-rapidapi-host': "jio-saavan-unofficial.p.rapidapi.com",
+              'Content-Type': "application/json"
+            },
+            body: JSON.stringify({ encrypted_media_url: mediaUrl })
+          });
+          if (songRes.ok) {
+            const songData = await songRes.json();
+            return songData.media_url || songData.download_url;
+          }
         }
-    } catch (e) { console.error("All media streaming streams exhausted."); }
+      }
+    } catch (e) { /* skip to global network search */ }
 
     return null;
   };
 
   const initWebAudio = () => {
-    if (audioCtxRef.current) return; 
+    if (audioCtxRef.current) return;
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       audioCtxRef.current = new AudioContext();
-      
+
       const src1 = audioCtxRef.current.createMediaElementSource(audioRef1.current);
       const src2 = audioCtxRef.current.createMediaElementSource(audioRef2.current);
-      
+
       const freqs = [60, 230, 910, 3000, 14000];
       let lastNode = null;
-      
+
       freqs.forEach(freq => {
         let filter = audioCtxRef.current.createBiquadFilter();
         filter.type = 'peaking';
@@ -267,20 +255,20 @@ function FluxApp() {
     const val = parseFloat(value);
     setEqValues(prev => ({ ...prev, [freq]: val }));
     if (filtersRef.current.length > 0) {
-        const indexMap = { 60: 0, 230: 1, 910: 2, 3000: 3, 14000: 4 };
-        filtersRef.current[indexMap[freq]].gain.value = val;
+      const indexMap = { 60: 0, 230: 1, 910: 2, 3000: 3, 14000: 4 };
+      filtersRef.current[indexMap[freq]].gain.value = val;
     }
   };
 
   const applyCopperPreset = () => {
     const preset = { 60: 6, 230: 4, 910: -3, 3000: 2, 14000: 4 };
     setEqValues(preset);
-    if(filtersRef.current.length > 0) {
-        filtersRef.current[0].gain.value = 6;
-        filtersRef.current[1].gain.value = 4;
-        filtersRef.current[2].gain.value = -3;
-        filtersRef.current[3].gain.value = 2;
-        filtersRef.current[4].gain.value = 4;
+    if (filtersRef.current.length > 0) {
+      filtersRef.current[0].gain.value = 6;
+      filtersRef.current[1].gain.value = 4;
+      filtersRef.current[2].gain.value = -3;
+      filtersRef.current[3].gain.value = 2;
+      filtersRef.current[4].gain.value = 4;
     }
     setIsEqOpen(false);
   };
@@ -289,7 +277,7 @@ function FluxApp() {
     if (fadeIntervalRef.current) clearInterval(fadeIntervalRef.current);
     if (crossfadeTimeoutRef.current) clearTimeout(crossfadeTimeoutRef.current);
     isCrossfading.current = false;
-    
+
     audioRef1.current.pause();
     audioRef2.current.pause();
 
@@ -303,21 +291,20 @@ function FluxApp() {
 
     setActiveView('nowPlaying');
     setAvMode('song');
-    
+
     const engine = activeAudioRef.current === 1 ? audioRef1.current : audioRef2.current;
-    engine.volume = volumeRef.current; 
+    engine.volume = volumeRef.current;
 
     try {
-      // FIX: Removed strict instanceof Blob check to guarantee Vault files play
       if (trackInfo.blob) {
         const objectUrl = URL.createObjectURL(trackInfo.blob);
         engine.src = objectUrl;
-        engine.load(); 
+        engine.load();
         if (trackInfo.blob.type && trackInfo.blob.type.includes('video') && videoRef.current) {
-            videoRef.current.src = objectUrl;
-            videoRef.current.load();
+          videoRef.current.src = objectUrl;
+          videoRef.current.load();
         } else {
-            if(videoRef.current) videoRef.current.src = "";
+          if (videoRef.current) videoRef.current.src = "";
         }
       } else {
         const url = await fetchStreamUrl(trackInfo.id, trackInfo.title);
@@ -330,15 +317,15 @@ function FluxApp() {
           throw new Error("Pipeline Error");
         }
       }
-      
+
       const playPromise = engine.play();
       if (playPromise !== undefined) {
         playPromise.then(() => {
-            if(audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume();
-            initWebAudio(); 
-            setIsPlaying(true);
-            extractTheme(trackInfo.thumb);
-            if (avMode === 'video' && videoRef.current && videoRef.current.src) videoRef.current.play();
+          if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume();
+          initWebAudio();
+          setIsPlaying(true);
+          extractTheme(trackInfo.thumb);
+          if (avMode === 'video' && videoRef.current && videoRef.current.src) videoRef.current.play();
         }).catch(() => setIsPlaying(false));
       }
       fetchLyrics(trackInfo);
@@ -357,37 +344,37 @@ function FluxApp() {
       const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(clnArtist)}/${encodeURIComponent(clnTitle)}`);
       if (res.ok) {
         const data = await res.json();
-        if(data.lyrics) {
-            setLyrics(data.lyrics.replace(/\n/g, '<br>'));
-            return;
+        if (data.lyrics) {
+          setLyrics(data.lyrics.replace(/\n/g, '<br>'));
+          return;
         }
       }
     } catch (e) { }
 
     try {
-        const spotSearch = await fetch(`https://spotify23.p.rapidapi.com/search/?q=${encodeURIComponent(clnTitle + " " + clnArtist)}&type=tracks&offset=0&limit=1`, {
-            method: 'GET',
-            headers: { 'x-rapidapi-key': RAPID_API_KEY, 'x-rapidapi-host': 'spotify23.p.rapidapi.com' }
-        });
-        if (spotSearch.ok) {
-            const spotData = await spotSearch.json();
-            const trackId = spotData?.tracks?.items?.[0]?.data?.id;
-            
-            if (trackId) {
-                const lyricsRes = await fetch(`https://spotify23.p.rapidapi.com/track_lyrics/?id=${trackId}`, {
-                    method: "GET",
-                    headers: { 'x-rapidapi-key': RAPID_API_KEY, 'x-rapidapi-host': "spotify23.p.rapidapi.com" }
-                });
-                if (lyricsRes.ok) {
-                    const lyricData = await lyricsRes.json();
-                    const lines = lyricData?.lyrics?.lines?.map(l => l.words).join('<br>') || "";
-                    if (lines) {
-                        setLyrics(lines);
-                        return;
-                    }
-                }
+      const spotSearch = await fetch(`https://spotify23.p.rapidapi.com/search/?q=${encodeURIComponent(clnTitle + " " + clnArtist)}&type=tracks&offset=0&limit=1`, {
+        method: 'GET',
+        headers: { 'x-rapidapi-key': RAPID_API_KEY, 'x-rapidapi-host': 'spotify23.p.rapidapi.com' }
+      });
+      if (spotSearch.ok) {
+        const spotData = await spotSearch.json();
+        const trackId = spotData?.tracks?.items?.[0]?.data?.id;
+
+        if (trackId) {
+          const lyricsRes = await fetch(`https://spotify23.p.rapidapi.com/track_lyrics/?id=${trackId}`, {
+            method: "GET",
+            headers: { 'x-rapidapi-key': RAPID_API_KEY, 'x-rapidapi-host': "spotify23.p.rapidapi.com" }
+          });
+          if (lyricsRes.ok) {
+            const lyricData = await lyricsRes.json();
+            const lines = lyricData?.lyrics?.lines?.map(l => l.words).join('<br>') || "";
+            if (lines) {
+              setLyrics(lines);
+              return;
             }
+          }
         }
+      }
     } catch (e) { }
 
     setLyrics("Lyrics unavailable for this track context.");
@@ -398,110 +385,110 @@ function FluxApp() {
     const img = new Image(); img.crossOrigin = "Anonymous";
     img.onload = () => {
       const cvs = document.createElement('canvas'); const ctx = cvs.getContext('2d');
-      cvs.width = 50; cvs.height = 50; ctx.drawImage(img,0,0,50,50);
+      cvs.width = 50; cvs.height = 50; ctx.drawImage(img, 0, 0, 50, 50);
       try {
-        const d = ctx.getImageData(0,0,50,50).data; let r=0,g=0,b=0,c=0;
-        for(let i=0; i<d.length; i+=16) { r+=d[i]; g+=d[i+1]; b+=d[i+2]; c++; }
-        document.documentElement.style.setProperty('--accent-color', `rgb(${Math.max(0,r/c-40)}, ${Math.max(0,g/c-40)}, ${Math.max(0,b/c-40)})`);
+        const d = ctx.getImageData(0, 0, 50, 50).data; let r = 0, g = 0, b = 0, c = 0;
+        for (let i = 0; i < d.length; i += 16) { r += d[i]; g += d[i + 1]; b += d[i + 2]; c++; }
+        document.documentElement.style.setProperty('--accent-color', `rgb(${Math.max(0, r / c - 40)}, ${Math.max(0, g / c - 40)}, ${Math.max(0, b / c - 40)})`);
         document.documentElement.style.setProperty('--blob-color', `rgba(${r}, ${g}, ${b}, 0.5)`);
-      } catch(e){}
+      } catch (e) { }
     }; img.src = url;
   };
 
   const handleTimeUpdate = () => {
     const engine = activeAudioRef.current === 1 ? audioRef1.current : audioRef2.current;
     const nextEngine = activeAudioRef.current === 1 ? audioRef2.current : audioRef1.current;
-    
+
     if (!engine) return;
     const cur = engine.currentTime || 0;
     const tot = engine.duration || 0;
     setProgress({ current: cur, total: tot });
 
     if (avMode === 'video' && videoRef.current && Math.abs(videoRef.current.currentTime - cur) > 0.5) {
-        videoRef.current.currentTime = cur;
+      videoRef.current.currentTime = cur;
     }
 
     if (tot > 0 && tot - cur <= 5 && !isCrossfading.current && currentIndex + 1 < queue.length) {
-        isCrossfading.current = true;
-        const nextIdx = isShuffle ? Math.floor(Math.random() * queue.length) : currentIndex + 1;
-        const nextTrack = queue[nextIdx];
-        
-        if (nextTrack.blob) {
-            nextEngine.src = URL.createObjectURL(nextTrack.blob);
+      isCrossfading.current = true;
+      const nextIdx = isShuffle ? Math.floor(Math.random() * queue.length) : currentIndex + 1;
+      const nextTrack = queue[nextIdx];
+
+      if (nextTrack.blob) {
+        nextEngine.src = URL.createObjectURL(nextTrack.blob);
+        nextEngine.load();
+        beginFade(engine, nextEngine, nextIdx);
+      } else {
+        fetchStreamUrl(nextTrack.id, nextTrack.title).then(url => {
+          if (url) {
+            nextEngine.src = url;
             nextEngine.load();
             beginFade(engine, nextEngine, nextIdx);
-        } else {
-            fetchStreamUrl(nextTrack.id, nextTrack.title).then(url => {
-                if(url) {
-                    nextEngine.src = url;
-                    nextEngine.load();
-                    beginFade(engine, nextEngine, nextIdx);
-                }
-            });
-        }
+          }
+        });
+      }
     }
-    
-    if(tot > 1 && cur >= tot && !isCrossfading.current) playNext();
+
+    if (tot > 1 && cur >= tot && !isCrossfading.current) playNext();
   };
 
   const beginFade = (fadeOutEngine, fadeInEngine, nextIdx) => {
-      fadeInEngine.volume = 0;
-      fadeInEngine.play().catch(()=>{});
+    fadeInEngine.volume = 0;
+    fadeInEngine.play().catch(() => { });
 
-      const masterVol = volumeRef.current;
+    const masterVol = volumeRef.current;
 
-      fadeIntervalRef.current = setInterval(() => {
-          if (fadeOutEngine.volume > 0.05) fadeOutEngine.volume -= 0.05;
-          if (fadeInEngine.volume < masterVol - 0.05) fadeInEngine.volume += 0.05;
-      }, 250);
+    fadeIntervalRef.current = setInterval(() => {
+      if (fadeOutEngine.volume > 0.05) fadeOutEngine.volume -= 0.05;
+      if (fadeInEngine.volume < masterVol - 0.05) fadeInEngine.volume += 0.05;
+    }, 250);
 
-      crossfadeTimeoutRef.current = setTimeout(() => {
-          clearInterval(fadeIntervalRef.current);
-          fadeOutEngine.pause();
-          fadeOutEngine.volume = masterVol;
-          fadeInEngine.volume = masterVol;
-          
-          activeAudioRef.current = activeAudioRef.current === 1 ? 2 : 1;
-          isCrossfading.current = false;
-          
-          setCurrentIndex(nextIdx);
-          const t = queue[nextIdx];
-          if(t) {
-              extractTheme(t.thumb);
-              fetchLyrics(t);
-          }
-      }, 5000);
+    crossfadeTimeoutRef.current = setTimeout(() => {
+      clearInterval(fadeIntervalRef.current);
+      fadeOutEngine.pause();
+      fadeOutEngine.volume = masterVol;
+      fadeInEngine.volume = masterVol;
+
+      activeAudioRef.current = activeAudioRef.current === 1 ? 2 : 1;
+      isCrossfading.current = false;
+
+      setCurrentIndex(nextIdx);
+      const t = queue[nextIdx];
+      if (t) {
+        extractTheme(t.thumb);
+        fetchLyrics(t);
+      }
+    }, 5000);
   };
 
   const togglePlay = () => {
-    if(currentIndex === -1 || queue.length === 0) return;
+    if (currentIndex === -1 || queue.length === 0) return;
     const engine = activeAudioRef.current === 1 ? audioRef1.current : audioRef2.current;
     if (isPlaying) {
-        engine.pause();
-        if(videoRef.current) videoRef.current.pause();
+      engine.pause();
+      if (videoRef.current) videoRef.current.pause();
     } else {
-        if(audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume();
-        engine.play();
-        if(avMode === 'video' && videoRef.current) videoRef.current.play();
+      if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume();
+      engine.play();
+      if (avMode === 'video' && videoRef.current) videoRef.current.play();
     }
     setIsPlaying(!isPlaying);
   };
 
   const playNext = () => {
-      if (queue.length === 0) return;
-      const nextIdx = isShuffle ? Math.floor(Math.random() * queue.length) : (currentIndex + 1) % queue.length;
-      playTrack(queue, nextIdx);
+    if (queue.length === 0) return;
+    const nextIdx = isShuffle ? Math.floor(Math.random() * queue.length) : (currentIndex + 1) % queue.length;
+    playTrack(queue, nextIdx);
   };
 
   const playPrev = () => {
-      if (queue.length === 0) return;
-      const engine = activeAudioRef.current === 1 ? audioRef1.current : audioRef2.current;
-      if (engine.currentTime > 5) {
-          engine.currentTime = 0;
-      } else {
-          const prevIdx = currentIndex <= 0 ? queue.length - 1 : currentIndex - 1;
-          playTrack(queue, prevIdx);
-      }
+    if (queue.length === 0) return;
+    const engine = activeAudioRef.current === 1 ? audioRef1.current : audioRef2.current;
+    if (engine.currentTime > 5) {
+      engine.currentTime = 0;
+    } else {
+      const prevIdx = currentIndex <= 0 ? queue.length - 1 : currentIndex - 1;
+      playTrack(queue, prevIdx);
+    }
   };
 
   const handleProgressClick = (e) => {
@@ -526,23 +513,23 @@ function FluxApp() {
 
     const exists = vaultTracks.find(t => t.id === track.id);
     if (exists) {
-        await deleteFromDB(track.id);
-        showToast("🗑️ Removed from Vault");
+      await deleteFromDB(track.id);
+      showToast("🗑️ Removed from Vault");
     } else {
-        try {
-            const vaultItem = { id: track.id, title: track.title, artist: track.artist, thumb: track.thumb, playlist: 'favorites' };
-            if (track.blob) vaultItem.blob = track.blob;
-            await saveToDB(vaultItem);
-            showToast("⭐ Added to Vault");
-        } catch (e) { showToast("❌ Database Error"); }
+      try {
+        const vaultItem = { id: track.id, title: track.title, artist: track.artist, thumb: track.thumb, playlist: 'favorites' };
+        if (track.blob) vaultItem.blob = track.blob;
+        await saveToDB(vaultItem);
+        showToast("⭐ Added to Vault");
+      } catch (e) { showToast("❌ Database Error"); }
     }
     loadVault();
   };
 
-  const currentTrack = (queue && queue.length > 0 && currentIndex >= 0 && queue[currentIndex]) 
-      ? queue[currentIndex] 
-      : { id: 'default', title: 'Flux Player', artist: 'Engine Ready', thumb: null, blob: null };
-  
+  const currentTrack = (queue && queue.length > 0 && currentIndex >= 0 && queue[currentIndex])
+    ? queue[currentIndex]
+    : { id: 'default', title: 'Flux Player', artist: 'Engine Ready', thumb: null, blob: null };
+
   const percentComplete = progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
   const displayedVault = playlistFilter === 'all' ? vaultTracks : vaultTracks.filter(t => t.playlist === playlistFilter);
   const isSaved = vaultTracks.some(t => t.id === currentTrack.id);
@@ -559,16 +546,16 @@ function FluxApp() {
       {activeView === 'home' && (
         <div className="view active-view">
           <div className="top-header"><div className="library-title">Home</div></div>
-          
+
           <div style={{ fontWeight: 800, fontSize: '18px', marginBottom: '15px' }}>Top Anthems</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '30px' }}>
             <div className="song-item glass-panel" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '20px' }} onClick={() => handleSearch(null, 'Max Verstappen Song official audio')}>
               <div style={{ fontSize: '32px', marginBottom: '8px' }}>🏎️</div>
-              <div style={{ fontWeight: 800, fontSize: '15px' }}>F1 Drivers<br/><span style={{fontWeight:600, fontSize:'12px', color: 'var(--text-secondary)'}}>Super Max & More</span></div>
+              <div style={{ fontWeight: 800, fontSize: '15px' }}>F1 Drivers<br /><span style={{ fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>Super Max & More</span></div>
             </div>
             <div className="song-item glass-panel" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '20px' }} onClick={() => handleSearch(null, 'Global Top 50 Hits official audio')}>
               <div style={{ fontSize: '32px', marginBottom: '8px' }}>🌍</div>
-              <div style={{ fontWeight: 800, fontSize: '15px' }}>Global Top 50<br/><span style={{fontWeight:600, fontSize:'12px', color: 'var(--text-secondary)'}}>Universal Hits</span></div>
+              <div style={{ fontWeight: 800, fontSize: '15px' }}>Global Top 50<br /><span style={{ fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>Universal Hits</span></div>
             </div>
           </div>
         </div>
@@ -579,10 +566,10 @@ function FluxApp() {
         <div className="view active-view">
           <div className="top-header"><div className="library-title">Discover</div></div>
           <form onSubmit={handleSearch} style={{ display: 'flex', gap: '10px' }}>
-            <input 
-              type="text" 
-              className="search-bar glass-panel" 
-              placeholder="Search artists, songs..." 
+            <input
+              type="text"
+              className="search-bar glass-panel"
+              placeholder="Search artists, songs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -590,21 +577,21 @@ function FluxApp() {
               <span className="material-symbols-rounded">search</span>
             </button>
           </form>
-          
+
           {isSearching && <div className="loader" style={{ display: 'block' }}></div>}
-          
+
           <div className="song-list" style={{ marginTop: '16px' }}>
             {searchResults.length === 0 && !isSearching ? (
               <div style={{ textAlign: 'center', marginTop: '60px', fontWeight: 600, fontSize: '16px', color: 'var(--text-secondary)' }}>
-                Find your rhythm.<br/><span style={{ fontSize: '13px', fontWeight: 500, opacity: 0.8 }}>Dual API Fallback Engine Active.</span>
+                Find your rhythm.<br /><span style={{ fontSize: '13px', fontWeight: 500, opacity: 0.8 }}>Dual API Fallback Engine Active.</span>
               </div>
             ) : (
               searchResults.map((item, idx) => (
-                <div key={item.id.videoId} className="song-item glass-panel" onClick={() => { 
-                    const mappedQueue = searchResults.map(r => ({
-                        id: r.id.videoId, title: decodeHTML(r.snippet.title), artist: decodeHTML(r.snippet.channelTitle), thumb: r.snippet.thumbnails.high.url
-                    }));
-                    playTrack(mappedQueue, idx); 
+                <div key={item.id.videoId} className="song-item glass-panel" onClick={() => {
+                  const mappedQueue = searchResults.map(r => ({
+                    id: r.id.videoId, title: decodeHTML(r.snippet.title), artist: decodeHTML(r.snippet.channelTitle), thumb: r.snippet.thumbnails.high.url
+                  }));
+                  playTrack(mappedQueue, idx);
                 }}>
                   <div className="song-cover-small" style={{ backgroundImage: `url('${item.snippet.thumbnails.high.url}')` }}></div>
                   <div className="song-info">
@@ -625,11 +612,24 @@ function FluxApp() {
           <div className="top-header">
             <button className="icon-btn glass-panel" onClick={() => setActiveView('home')}><span className="material-symbols-rounded">expand_more</span></button>
             <div style={{ fontWeight: 800, fontSize: '16px' }}>Now Playing</div>
-            
-            {/* EQ Button Restored to Top Right */}
-            <button className="icon-btn glass-panel" onClick={() => setIsEqOpen(true)}>
-                <span className="material-symbols-rounded">tune</span>
-            </button>
+
+            {/* Top-Right Volume Control */}
+            <div className="volume-wrapper">
+              <button className="icon-btn glass-panel">
+                <span className="material-symbols-rounded">
+                  {volume === 0 ? 'volume_off' : volume > 0.5 ? 'volume_up' : 'volume_down'}
+                </span>
+              </button>
+              <div className="volume-slider-container glass-panel-heavy">
+                <input
+                  type="range"
+                  min="0" max="1" step="0.05"
+                  value={volume}
+                  onChange={handleVolumeChange}
+                  className="volume-slider"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="av-toggle-container glass-panel">
@@ -640,29 +640,22 @@ function FluxApp() {
 
           <div className="artwork-container" style={{ backgroundImage: displayThumb ? `url('${displayThumb}')` : 'none' }}>
             {!displayThumb && <div className="glass-pill glass-panel"><span className="material-symbols-rounded">music_note</span></div>}
-            
-            <div className={`css-visualizer ${isPlaying ? 'active' : ''}`}>
-                <div className="viz-bar"></div><div className="viz-bar"></div>
-                <div className="viz-bar"></div><div className="viz-bar"></div>
-                <div className="viz-bar"></div><div className="viz-bar"></div>
-                <div className="viz-bar"></div>
-            </div>
 
             <div id="video-player-container" style={{ display: avMode === 'video' ? 'block' : 'none' }}>
-                <video ref={videoRef} playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}></video>
+              <video ref={videoRef} playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}></video>
             </div>
 
             <div className="lyrics-overlay glass-panel-heavy" style={{ display: avMode === 'lyrics' ? 'flex' : 'none' }}>
-                <div className="lyrics-title">Lyrics</div>
-                <div className="lyrics-text" dangerouslySetInnerHTML={{ __html: lyrics }}></div>
+              <div className="lyrics-title">Lyrics</div>
+              <div className="lyrics-text" dangerouslySetInnerHTML={{ __html: lyrics }}></div>
             </div>
           </div>
-          
+
           <div className="track-info">
             <div className="track-title">{currentTrack.title}</div>
             <div className="track-artist">{currentTrack.artist}</div>
           </div>
-          
+
           <div className="progress-area">
             <div className="progress-bar-container" onClick={handleProgressClick}>
               <div className="progress-track"></div>
@@ -674,37 +667,23 @@ function FluxApp() {
               <span>{formatTime(progress.total)}</span>
             </div>
           </div>
-          
+
           <div className="controls-main">
             <button className="ctrl-btn" onClick={playPrev}><span className="material-symbols-rounded">skip_previous</span></button>
             <button className="play-btn" onClick={togglePlay}>
               <span className="material-symbols-rounded" style={{ fontSize: '42px' }}>{isPlaying ? 'pause' : 'play_arrow'}</span>
             </button>
-            
-            {/* Volume Slider and Next Button side-by-side to keep layout balanced */}
             <button className="ctrl-btn" onClick={playNext}><span className="material-symbols-rounded">skip_next</span></button>
-            
-            <div className="volume-wrapper">
-                <button className="ctrl-btn">
-                    <span className="material-symbols-rounded">
-                        {volume === 0 ? 'volume_off' : volume > 0.5 ? 'volume_up' : 'volume_down'}
-                    </span>
-                </button>
-                <div className="volume-slider-container glass-panel-heavy">
-                    <input 
-                        type="range" 
-                        min="0" max="1" step="0.05" 
-                        value={volume} 
-                        onChange={handleVolumeChange} 
-                        className="volume-slider" 
-                    />
-                </div>
-            </div>
+
+            {/* EQ Button Restored Next to Skip Button */}
+            <button className="ctrl-btn" onClick={() => setIsEqOpen(true)}>
+              <span className="material-symbols-rounded">tune</span>
+            </button>
           </div>
-          
+
           <div className="controls-secondary">
             <button className="ctrl-btn" onClick={() => setIsShuffle(!isShuffle)}>
-                <span className="material-symbols-rounded" style={{ fontSize: '26px', color: isShuffle ? 'var(--accent-color)' : 'var(--text-primary)' }}>shuffle</span>
+              <span className="material-symbols-rounded" style={{ fontSize: '26px', color: isShuffle ? 'var(--accent-color)' : 'var(--text-primary)' }}>shuffle</span>
             </button>
             <button className="ctrl-btn" onClick={toggleVaultStatus}>
               <span className="material-symbols-rounded" style={{ fontSize: '28px', color: isSaved ? 'var(--accent-color)' : 'var(--text-primary)' }}>
@@ -719,7 +698,7 @@ function FluxApp() {
       {activeView === 'library' && (
         <div className="view active-view">
           <div className="top-header" style={{ paddingLeft: 0 }}><div className="library-title">The Vault</div></div>
-          
+
           <select className="playlist-select glass-panel" value={playlistFilter} onChange={(e) => setPlaylistFilter(e.target.value)}>
             <option value="all">All Saved Tracks</option>
             <option value="favorites">Favorites</option>
@@ -733,26 +712,26 @@ function FluxApp() {
           <div style={{ fontSize: '14px', marginBottom: '16px', fontWeight: 800, color: 'var(--text-secondary)' }}>
             💾 {displayedVault.length} tracks registered
           </div>
-          
+
           <div className="song-list">
             {displayedVault.length === 0 ? (
-               <div style={{ textAlign: 'center', marginTop: '40px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                 Your Vault is empty.<br/><span style={{ fontSize: '12px' }}>Heart a song or load local media.</span>
-               </div>
+              <div style={{ textAlign: 'center', marginTop: '40px', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Your Vault is empty.<br /><span style={{ fontSize: '12px' }}>Heart a song or load local media.</span>
+              </div>
             ) : (
-                displayedVault.map((t, idx) => {
-                    const finalThumb = t.thumb || generateDynamicCover(t.title);
-                    return (
-                        <div key={t.id} className="song-item glass-panel" onClick={() => playTrack(displayedVault, idx)}>
-                          <div className="song-cover-small" style={{ backgroundImage: `url('${finalThumb}')` }}></div>
-                          <div className="song-info">
-                            <div className="song-title">{t.title}</div>
-                            <div className="song-artist">{t.artist}</div>
-                          </div>
-                          <div className="list-play-btn"><span className="material-symbols-rounded">play_arrow</span></div>
-                        </div>
-                    );
-                })
+              displayedVault.map((t, idx) => {
+                const finalThumb = t.thumb || generateDynamicCover(t.title);
+                return (
+                  <div key={t.id} className="song-item glass-panel" onClick={() => playTrack(displayedVault, idx)}>
+                    <div className="song-cover-small" style={{ backgroundImage: `url('${finalThumb}')` }}></div>
+                    <div className="song-info">
+                      <div className="song-title">{t.title}</div>
+                      <div className="song-artist">{t.artist}</div>
+                    </div>
+                    <div className="list-play-btn"><span className="material-symbols-rounded">play_arrow</span></div>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
@@ -763,28 +742,28 @@ function FluxApp() {
       {/* ================= EQ MODAL ================= */}
       {isEqOpen && (
         <div className="modal-overlay show">
-            <div className="modal-box glass-panel-heavy">
-                <div className="modal-title">DSP Tuner</div>
-                
-                <div className="eq-rack">
-                    {[60, 230, 910, 3000, 14000].map(freq => (
-                        <div key={freq} className="eq-row">
-                            <span className="eq-label">{freq < 1000 ? freq + 'Hz' : (freq/1000) + 'k'}</span>
-                            <input 
-                              type="range" min="-12" max="12" 
-                              value={eqValues[freq]} 
-                              onChange={(e) => handleEqChange(freq, e.target.value)} 
-                            />
-                            <span className="eq-val">{eqValues[freq]}dB</span>
-                        </div>
-                    ))}
-                </div>
+          <div className="modal-box glass-panel-heavy">
+            <div className="modal-title">DSP Tuner</div>
 
-                <div className="modal-actions">
-                    <button className="modal-btn modal-btn-secondary" onClick={applyCopperPreset}>Copper Preset</button>
-                    <button className="modal-btn save" onClick={() => setIsEqOpen(false)}>Done</button>
+            <div className="eq-rack">
+              {[60, 230, 910, 3000, 14000].map(freq => (
+                <div key={freq} className="eq-row">
+                  <span className="eq-label">{freq < 1000 ? freq + 'Hz' : (freq / 1000) + 'k'}</span>
+                  <input
+                    type="range" min="-12" max="12"
+                    value={eqValues[freq]}
+                    onChange={(e) => handleEqChange(freq, e.target.value)}
+                  />
+                  <span className="eq-val">{eqValues[freq]}dB</span>
                 </div>
+              ))}
             </div>
+
+            <div className="modal-actions">
+              <button className="modal-btn modal-btn-secondary" onClick={applyCopperPreset}>Copper Preset</button>
+              <button className="modal-btn save" onClick={() => setIsEqOpen(false)}>Done</button>
+            </div>
+          </div>
         </div>
       )}
 
