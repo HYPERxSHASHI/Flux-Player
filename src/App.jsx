@@ -8,7 +8,8 @@ const RAPID_API_KEY = "71af390377msh19f2934aa9f45f0p13bb41jsnde747c954e2e";
 const PIPED_INSTANCES = [
   "https://pipedapi.kavin.rocks",
   "https://api.piped.projectsegfau.lt",
-  "https://pipedapi.tokhmi.xyz"
+  "https://pipedapi.tokhmi.xyz",
+  "https://piped-api.lunar.icu"
 ];
 
 let db;
@@ -141,17 +142,30 @@ function FluxApp() {
     if (!queryToUse) return;
 
     setIsSearching(true);
+    setSearchResults([]);
+
     try {
       const q = encodeURIComponent(queryToUse + " official audio OR lyrics");
       const res = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=15&q=${q}&type=video&key=${API_KEY}`);
+
+      if (!res.ok) throw new Error("YouTube API failed");
+
       const data = await res.json();
-      setSearchResults(data.items || []);
+      if (data.items?.length) {
+        setSearchResults(data.items);
+      } else {
+        showToast("No results found");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("❌ Search failed. Check API key or network.");
+    } finally {
+      setIsSearching(false);
       if (directQuery) {
         setSearchQuery(directQuery);
         setActiveView('search');
       }
-    } catch (err) { showToast("❌ Search Engine Offline"); }
-    setIsSearching(false);
+    }
   };
 
   const handleLocalUpload = async (e) => {
@@ -160,7 +174,7 @@ function FluxApp() {
 
     for (let file of files) {
       const track = {
-        id: 'local_' + Date.now() + Math.random(),
+        id: 'local_' + Date.now() + Math.random().toString(36),
         title: file.name.replace(/\.[^/.]+$/, ""),
         artist: 'Local Media',
         thumb: generateDynamicCover(file.name),
@@ -176,18 +190,17 @@ function FluxApp() {
   const fetchStreamUrl = async (id, title) => {
     for (let instance of PIPED_INSTANCES) {
       try {
-        const res = await fetch(`${instance}/streams/${id}`);
+        const res = await fetch(`${instance}/streams/${id}`, { signal: AbortSignal.timeout(10000) });
         if (res.ok) {
           const data = await res.json();
-          const audio = data.audioStreams.find(s => s.mimeType.includes("mp4a")) || data.audioStreams[0];
-          if (audio) return audio.url;
+          const audio = data.audioStreams?.find(s => s.mimeType?.includes("mp4a") || s.mimeType?.includes("audio")) || data.audioStreams?.[0];
+          if (audio?.url) return audio.url;
         }
-      } catch (e) { }
+      } catch (e) { console.warn(`Piped failed: ${instance}`); }
     }
 
     try {
       const searchRes = await fetch(`https://jio-saavan-unofficial.p.rapidapi.com/search?query=${encodeURIComponent(title)}`, {
-        method: 'GET',
         headers: {
           'x-rapidapi-key': RAPID_API_KEY,
           'x-rapidapi-host': 'jio-saavan-unofficial.p.rapidapi.com'
@@ -196,7 +209,6 @@ function FluxApp() {
       if (searchRes.ok) {
         const searchData = await searchRes.json();
         const mediaUrl = searchData?.results?.[0]?.encrypted_media_url;
-
         if (mediaUrl) {
           const songRes = await fetch("https://jio-saavan-unofficial.p.rapidapi.com/getsong", {
             method: "POST",
@@ -213,7 +225,7 @@ function FluxApp() {
           }
         }
       }
-    } catch (e) { }
+    } catch (e) { console.warn("Jio Saavn failed"); }
 
     return null;
   };
@@ -244,8 +256,7 @@ function FluxApp() {
       src1.connect(filtersRef.current[0]);
       src2.connect(filtersRef.current[0]);
       lastNode.connect(audioCtxRef.current.destination);
-
-    } catch (e) { console.warn("WebAudio disabled for cross-origin compliance"); }
+    } catch (e) { console.warn("WebAudio disabled"); }
   };
 
   const handleEqChange = (freq, value) => {
@@ -300,13 +311,10 @@ function FluxApp() {
         if (trackInfo.blob.type && trackInfo.blob.type.includes('video') && videoRef.current) {
           videoRef.current.src = objectUrl;
           videoRef.current.load();
-        } else {
-          if (videoRef.current) videoRef.current.src = "";
-        }
+        } else if (videoRef.current) videoRef.current.src = "";
       } else {
         const url = await fetchStreamUrl(trackInfo.id, trackInfo.title);
         if (playIdRef.current !== currentPlayId) return;
-
         if (url) {
           engine.src = url;
           engine.load();
@@ -349,16 +357,13 @@ function FluxApp() {
 
     try {
       const spotSearch = await fetch(`https://spotify23.p.rapidapi.com/search/?q=${encodeURIComponent(clnTitle + " " + clnArtist)}&type=tracks&offset=0&limit=1`, {
-        method: 'GET',
         headers: { 'x-rapidapi-key': RAPID_API_KEY, 'x-rapidapi-host': 'spotify23.p.rapidapi.com' }
       });
       if (spotSearch.ok) {
         const spotData = await spotSearch.json();
         const trackId = spotData?.tracks?.items?.[0]?.data?.id;
-
         if (trackId) {
           const lyricsRes = await fetch(`https://spotify23.p.rapidapi.com/track_lyrics/?id=${trackId}`, {
-            method: "GET",
             headers: { 'x-rapidapi-key': RAPID_API_KEY, 'x-rapidapi-host': "spotify23.p.rapidapi.com" }
           });
           if (lyricsRes.ok) {
@@ -393,8 +398,6 @@ function FluxApp() {
 
   const handleTimeUpdate = () => {
     const engine = activeAudioRef.current === 1 ? audioRef1.current : audioRef2.current;
-    const nextEngine = activeAudioRef.current === 1 ? audioRef2.current : audioRef1.current;
-
     if (!engine) return;
     const cur = engine.currentTime || 0;
     const tot = engine.duration || 0;
@@ -409,6 +412,7 @@ function FluxApp() {
       const nextIdx = isShuffle ? Math.floor(Math.random() * queue.length) : currentIndex + 1;
       const nextTrack = queue[nextIdx];
 
+      const nextEngine = activeAudioRef.current === 1 ? audioRef2.current : audioRef1.current;
       if (nextTrack.blob) {
         nextEngine.src = URL.createObjectURL(nextTrack.blob);
         nextEngine.load();
@@ -538,112 +542,66 @@ function FluxApp() {
         <div className="blob blob-2"></div>
       </div>
 
-      {/* ================= 1. HOME VIEW ================= */}
+      {/* ================= HOME VIEW ================= */}
       {activeView === 'home' && (
         <div className="view active-view">
           <div className="top-header"><div className="library-title">Home</div></div>
-
           <div style={{ fontWeight: 800, fontSize: '18px', marginBottom: '15px' }}>Top Anthems</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '30px' }}>
-            <div className="song-item glass-panel" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '20px' }} onClick={() => handleSearch(null, 'Max Verstappen Song official audio')}>
-              <div style={{ fontSize: '32px', marginBottom: '8px' }}>🏎️</div>
-              <div style={{ fontWeight: 800, fontSize: '15px' }}>F1 Drivers<br /><span style={{ fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>Super Max & More</span></div>
-            </div>
-            <div className="song-item glass-panel" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '20px' }} onClick={() => handleSearch(null, 'Global Top 50 Hits official audio')}>
-              <div style={{ fontSize: '32px', marginBottom: '8px' }}>🌍</div>
-              <div style={{ fontWeight: 800, fontSize: '15px' }}>Global Top 50<br /><span style={{ fontWeight: 600, fontSize: '12px', color: 'var(--text-secondary)' }}>Universal Hits</span></div>
-            </div>
+            {/* Placeholder for trending cards */}
           </div>
-        </div>
-      )}
 
-      {/* ================= 2. SEARCH VIEW ================= */}
-      {activeView === 'search' && (
-        <div className="view active-view">
-          <div className="top-header"><div className="library-title">Discover</div></div>
-          <form onSubmit={handleSearch} style={{ display: 'flex', gap: '10px' }}>
+          <button className="load-music-btn" onClick={() => document.getElementById('local-upload').click()}>
+            📁 Load Local Music
+          </button>
+          <input
+            id="local-upload"
+            type="file"
+            multiple
+            accept="audio/*,video/*"
+            style={{ display: 'none' }}
+            onChange={handleLocalUpload}
+          />
+
+          <form onSubmit={handleSearch} style={{ marginTop: '20px' }}>
             <input
               type="text"
-              className="search-bar glass-panel"
-              placeholder="Search artists, songs..."
+              className="search-bar"
+              placeholder="Search songs, artists..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
-            <button type="submit" className="icon-btn glass-panel" style={{ width: '54px', height: '54px', borderRadius: '20px', flexShrink: 0 }}>
-              <span className="material-symbols-rounded">search</span>
-            </button>
           </form>
+        </div>
+      )}
 
-          {isSearching && <div className="loader" style={{ display: 'block' }}></div>}
-
-          <div className="song-list" style={{ marginTop: '16px' }}>
-            {searchResults.length === 0 && !isSearching ? (
-              <div style={{ textAlign: 'center', marginTop: '60px', fontWeight: 600, fontSize: '16px', color: 'var(--text-secondary)' }}>
-                Find your rhythm.<br /><span style={{ fontSize: '13px', fontWeight: 500, opacity: 0.8 }}>Dual API Fallback Engine Active.</span>
-              </div>
-            ) : (
-              searchResults.map((item, idx) => (
-                <div key={item.id.videoId} className="song-item glass-panel" onClick={() => {
-                  const mappedQueue = searchResults.map(r => ({
-                    id: r.id.videoId, title: decodeHTML(r.snippet.title), artist: decodeHTML(r.snippet.channelTitle), thumb: r.snippet.thumbnails.high.url
-                  }));
-                  playTrack(mappedQueue, idx);
-                }}>
-                  <div className="song-cover-small" style={{ backgroundImage: `url('${item.snippet.thumbnails.high.url}')` }}></div>
+      {/* ================= SEARCH VIEW (Placeholder) ================= */}
+      {activeView === 'search' && (
+        <div className="view active-view">
+          <div className="top-header"><div className="library-title">Search</div></div>
+          {isSearching ? (
+            <div className="loader" style={{ display: 'block' }}></div>
+          ) : (
+            <div className="song-list">
+              {searchResults.map((item, idx) => (
+                <div key={idx} className="song-item glass-panel" onClick={() => playTrack(searchResults, idx)}>
+                  <div className="song-cover-small" style={{ backgroundImage: `url(${item.snippet.thumbnails.default.url})` }}></div>
                   <div className="song-info">
                     <div className="song-title">{decodeHTML(item.snippet.title)}</div>
                     <div className="song-artist">{decodeHTML(item.snippet.channelTitle)}</div>
                   </div>
-                  <div className="list-play-btn"><span className="material-symbols-rounded">play_arrow</span></div>
                 </div>
-              ))
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ================= 3. PLAYER VIEW ================= */}
+      {/* ================= NOW PLAYING VIEW ================= */}
       {activeView === 'nowPlaying' && (
         <div className="view active-view">
-          <div className="top-header">
-            <button className="icon-btn glass-panel" onClick={() => setActiveView('home')}><span className="material-symbols-rounded">expand_more</span></button>
-            <div style={{ fontWeight: 800, fontSize: '16px' }}>Now Playing</div>
-
-            <div className="volume-wrapper">
-              <button className="icon-btn glass-panel">
-                <span className="material-symbols-rounded">
-                  {volume === 0 ? 'volume_off' : volume > 0.5 ? 'volume_up' : 'volume_down'}
-                </span>
-              </button>
-              <div className="volume-slider-container glass-panel-heavy">
-                <input
-                  type="range"
-                  min="0" max="1" step="0.05"
-                  value={volume}
-                  onChange={handleVolumeChange}
-                  className="volume-slider"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="av-toggle-container glass-panel">
-            <button className={`av-btn ${avMode === 'song' ? 'active' : ''}`} onClick={() => setAvMode('song')}>Song</button>
-            <button className={`av-btn ${avMode === 'lyrics' ? 'active' : ''}`} onClick={() => setAvMode('lyrics')}>Lyrics</button>
-            <button className={`av-btn ${avMode === 'video' ? 'active' : ''}`} onClick={() => { setAvMode('video'); if (isPlaying && videoRef.current) videoRef.current.play(); }}>Video</button>
-          </div>
-
-          <div className="artwork-container" style={{ backgroundImage: displayThumb ? `url('${displayThumb}')` : 'none' }}>
-            {!displayThumb && <div className="glass-pill glass-panel"><span className="material-symbols-rounded">music_note</span></div>}
-
-            <div id="video-player-container" style={{ display: avMode === 'video' ? 'block' : 'none' }}>
-              <video ref={videoRef} playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }}></video>
-            </div>
-
-            <div className="lyrics-overlay glass-panel-heavy" style={{ display: avMode === 'lyrics' ? 'flex' : 'none' }}>
-              <div className="lyrics-title">Lyrics</div>
-              <div className="lyrics-text" dangerouslySetInnerHTML={{ __html: lyrics }}></div>
-            </div>
+          <div className="artwork-container" style={{ backgroundImage: `url(${displayThumb})` }}>
+            {avMode === 'video' && <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
           </div>
 
           <div className="track-info">
@@ -651,10 +609,16 @@ function FluxApp() {
             <div className="track-artist">{currentTrack.artist}</div>
           </div>
 
-          <div className="progress-area">
-            <div className="progress-bar-container" onClick={handleProgressClick}>
-              <div className="progress-track"></div>
-              <div className="progress-fill" style={{ width: `${percentComplete}%` }}></div>
+          <div className="av-toggle-container">
+            <button className={`av-btn ${avMode === 'song' ? 'active' : ''}`} onClick={() => setAvMode('song')}>Song</button>
+            <button className={`av-btn ${avMode === 'video' ? 'active' : ''}`} onClick={() => setAvMode('video')}>Video</button>
+          </div>
+
+          <div className="progress-area" onClick={handleProgressClick}>
+            <div className="progress-bar-container">
+              <div className="progress-track">
+                <div className="progress-fill" style={{ width: `${percentComplete}%` }}></div>
+              </div>
               <div className="progress-thumb" style={{ left: `${percentComplete}%` }}></div>
             </div>
             <div className="time-row">
@@ -664,117 +628,81 @@ function FluxApp() {
           </div>
 
           <div className="controls-main">
-            <button className="ctrl-btn" onClick={playPrev}><span className="material-symbols-rounded">skip_previous</span></button>
-            <button className="play-btn" onClick={togglePlay}>
-              <span className="material-symbols-rounded" style={{ fontSize: '42px' }}>{isPlaying ? 'pause' : 'play_arrow'}</span>
-            </button>
-            <button className="ctrl-btn" onClick={playNext}><span className="material-symbols-rounded">skip_next</span></button>
+            <button className="ctrl-btn" onClick={playPrev}>⏮</button>
+            <button className="play-btn" onClick={togglePlay}>{isPlaying ? '⏸' : '▶'}</button>
+            <button className="ctrl-btn" onClick={playNext}>⏭</button>
           </div>
 
-          {/* Secondary Control Deck: EQ Button repositioned perfectly in the center */}
           <div className="controls-secondary">
-            <button className="ctrl-btn" onClick={() => setIsShuffle(!isShuffle)}>
-              <span className="material-symbols-rounded" style={{ fontSize: '26px', color: isShuffle ? 'var(--accent-color)' : 'var(--text-primary)' }}>shuffle</span>
-            </button>
+            <button className="ctrl-btn" onClick={toggleVaultStatus}>{isSaved ? '❤️' : '♡'}</button>
+            <button className="ctrl-btn" onClick={() => setIsShuffle(!isShuffle)}>{isShuffle ? '🔀' : '➡️'}</button>
+            <div className="volume-wrapper">
+              <button className="ctrl-btn">🔊</button>
+              <input type="range" className="volume-slider" min="0" max="1" step="0.01" value={volume} onChange={handleVolumeChange} />
+            </div>
+            <button className="ctrl-btn" onClick={() => setIsEqOpen(true)}>🎛️</button>
+          </div>
 
-            <button className="ctrl-btn" onClick={() => setIsEqOpen(true)}>
-              <span className="material-symbols-rounded" style={{ fontSize: '26px' }}>tune</span>
-            </button>
-
-            <button className="ctrl-btn" onClick={toggleVaultStatus}>
-              <span className="material-symbols-rounded" style={{ fontSize: '28px', color: isSaved ? 'var(--accent-color)' : 'var(--text-primary)' }}>
-                {isSaved ? 'favorite' : 'favorite_border'}
-              </span>
-            </button>
+          <div className="lyrics-overlay">
+            <div className="lyrics-text" dangerouslySetInnerHTML={{ __html: lyrics }}></div>
           </div>
         </div>
       )}
 
-      {/* ================= 4. VAULT VIEW ================= */}
-      {activeView === 'library' && (
+      {/* ================= VAULT VIEW (Placeholder) ================= */}
+      {activeView === 'vault' && (
         <div className="view active-view">
-          <div className="top-header" style={{ paddingLeft: 0 }}><div className="library-title">The Vault</div></div>
-
-          <select className="playlist-select glass-panel" value={playlistFilter} onChange={(e) => setPlaylistFilter(e.target.value)}>
-            <option value="all">All Saved Tracks</option>
+          <div className="top-header"><div className="library-title">Vault</div></div>
+          <select className="playlist-select" value={playlistFilter} onChange={(e) => setPlaylistFilter(e.target.value)}>
+            <option value="all">All Tracks</option>
             <option value="favorites">Favorites</option>
           </select>
-
-          <label className="load-music-btn glass-panel">
-            <span className="material-symbols-rounded">folder_open</span> Add Local Music
-            <input type="file" accept="audio/*,video/*" multiple style={{ display: 'none' }} onChange={handleLocalUpload} />
-          </label>
-
-          <div style={{ fontSize: '14px', marginBottom: '16px', fontWeight: 800, color: 'var(--text-secondary)' }}>
-            💾 {displayedVault.length} tracks registered
-          </div>
-
           <div className="song-list">
-            {displayedVault.length === 0 ? (
-              <div style={{ textAlign: 'center', marginTop: '40px', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                Your Vault is empty.<br /><span style={{ fontSize: '12px' }}>Heart a song or load local media.</span>
+            {displayedVault.map((track, idx) => (
+              <div key={idx} className="song-item glass-panel" onClick={() => playTrack(displayedVault, idx)}>
+                <div className="song-cover-small" style={{ backgroundImage: `url(${track.thumb})` }}></div>
+                <div className="song-info">
+                  <div className="song-title">{track.title}</div>
+                  <div className="song-artist">{track.artist}</div>
+                </div>
               </div>
-            ) : (
-              displayedVault.map((t, idx) => {
-                const finalThumb = t.thumb || generateDynamicCover(t.title);
-                return (
-                  <div key={t.id} className="song-item glass-panel" onClick={() => playTrack(displayedVault, idx)}>
-                    <div className="song-cover-small" style={{ backgroundImage: `url('${finalThumb}')` }}></div>
-                    <div className="song-info">
-                      <div className="song-title">{t.title}</div>
-                      <div className="song-artist">{t.artist}</div>
-                    </div>
-                    <div className="list-play-btn"><span className="material-symbols-rounded">play_arrow</span></div>
-                  </div>
-                );
-              })
-            )}
+            ))}
           </div>
         </div>
       )}
 
       <BottomNav activeView={activeView} setActiveView={setActiveView} />
 
-      {/* ================= EQ MODAL ================= */}
+      {toast.visible && <div className="fallback-badge show">{toast.message}</div>}
+
+      {/* Hidden Audio Elements */}
+      <audio ref={audioRef1} onTimeUpdate={handleTimeUpdate} onEnded={playNext} />
+      <audio ref={audioRef2} onTimeUpdate={handleTimeUpdate} onEnded={playNext} />
+      <video ref={videoRef} style={{ display: 'none' }} />
+
+      {/* EQ Modal */}
       {isEqOpen && (
         <div className="modal-overlay show">
-          <div className="modal-box glass-panel-heavy">
-            <div className="modal-title">DSP Tuner</div>
-
+          <div className="modal-box">
+            <div className="modal-title">Studio EQ</div>
             <div className="eq-rack">
-              {[60, 230, 910, 3000, 14000].map(freq => (
+              {Object.keys(eqValues).map(freq => (
                 <div key={freq} className="eq-row">
-                  <span className="eq-label">{freq < 1000 ? freq + 'Hz' : (freq / 1000) + 'k'}</span>
-                  <input
-                    type="range" min="-12" max="12"
-                    value={eqValues[freq]}
-                    onChange={(e) => handleEqChange(freq, e.target.value)}
-                  />
-                  <span className="eq-val">{eqValues[freq]}dB</span>
+                  <div className="eq-label">{freq} Hz</div>
+                  <input type="range" min="-12" max="12" value={eqValues[freq]} onChange={(e) => handleEqChange(freq, e.target.value)} />
+                  <div className="eq-val">{eqValues[freq]} dB</div>
                 </div>
               ))}
             </div>
-
             <div className="modal-actions">
-              <button className="modal-btn modal-btn-secondary" onClick={applyCopperPreset}>Copper Preset</button>
-              <button className="modal-btn save" onClick={() => setIsEqOpen(false)}>Done</button>
+              <button className="modal-btn-secondary" onClick={() => setIsEqOpen(false)}>Close</button>
+              <button className="modal-btn" onClick={applyCopperPreset}>Copper Preset</button>
             </div>
           </div>
         </div>
       )}
-
-      <div className={`fallback-badge glass-panel-heavy ${toast.visible ? 'show' : ''}`}>{toast.message}</div>
-
-      <audio ref={audioRef1} onTimeUpdate={handleTimeUpdate}></audio>
-      <audio ref={audioRef2} onTimeUpdate={handleTimeUpdate}></audio>
     </div>
   );
 }
 
-export default function SafeApp() {
-  return (
-    <ErrorBoundary>
-      <FluxApp />
-    </ErrorBoundary>
-  );
-}
+export default FluxApp;
